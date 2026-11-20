@@ -29,10 +29,10 @@ flowchart LR
     Hub <--> Rooms
   end
 
-  Session <-->|"WSS v2 JSON Envelopes"| Hub
+  Session <-->|"WSS JSON Envelopes"| Hub
 ```
 
-## Protocol v2
+## Wire Format
 
 Defined in [`plugins/lunajam/src/protocol.ts`](../plugins/lunajam/src/protocol.ts). Both client and relay validate every envelope against `v: 2` (`decodeClient` and `decodeServer`).
 
