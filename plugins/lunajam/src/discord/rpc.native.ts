@@ -12,6 +12,9 @@ const OP_CLOSE = 2
 const OP_PING = 3
 const OP_PONG = 4
 const RPC_PID = 1000
+const WS_CRASH_COOLDOWN_MS = 300_000
+
+const wsCrashCooldown = new Map<number, number>()
 
 interface RpcConnection {
   clientId: string
@@ -34,7 +37,7 @@ function encodeIpcFrame(op: number, data: unknown): Buffer {
   return frame
 }
 
-function candidateSockets(): string[] {
+export function candidateSockets(): string[] {
   if (process.platform === 'win32') {
     const out: string[] = []
     for (let i = 0; i < 10; i++) out.push(`\\\\.\\pipe\\discord-ipc-${i}`)
@@ -64,6 +67,9 @@ function candidateSockets(): string[] {
     'app/com.discordapp.Discord',
     'app/dev.vencord.Vesktop',
     'app/org.equicord.equibop',
+    '.flatpak/org.equicord.equibop/xdg-run',
+    '.flatpak/dev.vencord.Vesktop/xdg-run',
+    '.flatpak/com.discordapp.Discord/xdg-run',
     'snap.discord',
   ]
 
@@ -255,6 +261,8 @@ function encodeWsControlFrame(opcode: number, payload: Buffer): Buffer {
 function connectWsPort(port: number, clientId: string): Promise<RpcConnection> {
   return new Promise((resolve, reject) => {
     let settled = false
+    let upgraded = false
+    let gotFrame = false
     let socketRef: net.Socket | null = null
     let open = false
     let rx = Buffer.alloc(0)
@@ -336,6 +344,7 @@ function connectWsPort(port: number, clientId: string): Promise<RpcConnection> {
         let msg: Record<string, unknown>
         try {
           msg = JSON.parse(payload.toString('utf8')) as Record<string, unknown>
+          gotFrame = true
         } catch {
           continue
         }
@@ -388,6 +397,7 @@ function connectWsPort(port: number, clientId: string): Promise<RpcConnection> {
     }
 
     req.on('upgrade', (_, socket, head) => {
+      upgraded = true
       socketRef = socket
       open = true
       if (head.length > 0) rx = Buffer.concat([rx, head])
@@ -397,6 +407,9 @@ function connectWsPort(port: number, clientId: string): Promise<RpcConnection> {
       })
       socket.on('error', () => cleanup())
       socket.on('close', () => {
+        if (upgraded && !gotFrame && !settled) {
+          wsCrashCooldown.set(port, Date.now() + WS_CRASH_COOLDOWN_MS)
+        }
         if (!settled) {
           settled = true
           clearTimeout(timeout)
@@ -458,6 +471,7 @@ async function openConnection(clientId: string, opts?: RpcTestOpts): Promise<Rpc
 
     const ports = opts?.wsPorts ?? [6463, 6464, 6465, 6466, 6467, 6468, 6469, 6470, 6471, 6472]
     for (const port of ports) {
+      if (!opts?.wsPorts && (wsCrashCooldown.get(port) ?? 0) > Date.now()) continue
       try {
         const conn = await connectWsPort(port, clientId)
         activeConn = conn

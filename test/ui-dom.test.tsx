@@ -1,14 +1,16 @@
 import { JSDOM } from 'jsdom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { RoomSnapshot } from '../plugins/lunajam/src/protocol'
+import { ClockSync } from '../plugins/lunajam/src/sync/clock'
 import { SessionClient } from '../plugins/lunajam/src/session/client'
+import { TidalPlaybackBridge } from '../plugins/lunajam/src/tidal/playback'
 import { TidalQueueSync } from '../plugins/lunajam/src/tidal/queueSync'
 import { FooterButtonMount } from '../plugins/lunajam/src/ui/footerButton'
 import { unmountParticipantMenu } from '../plugins/lunajam/src/ui/participantMenu'
 import { PopoverController } from '../plugins/lunajam/src/ui/popover'
 import { QueueAvatarDecorator } from '../plugins/lunajam/src/ui/queueAvatars'
 import { QueueHeaderMount } from '../plugins/lunajam/src/ui/queueHeader'
-import { resetLunaMock, setFakeQueue, getDispatched } from './helpers/lunaMock'
+import { resetLunaMock, setFakePlaybackContext, setFakeQueue, getDispatched } from './helpers/lunaMock'
 
 function flushReact(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 30))
@@ -212,11 +214,17 @@ describe('Native TIDAL UI integration', () => {
 
     document.body.innerHTML = `
       <div class="_playQueueWrapper_cbf5aaa">
-        <div class="_container_b3e8f28">
-          <div class="_header_f4bacf5"><span data-test="playqueue-title">Play Queue</span></div>
-          <div data-test="playqueue-item" data-test-media-item-id="101" id="row-0"><div class="_actions_3b2b8f9"></div></div>
-          <div data-test="playqueue-item" data-test-media-item-id="202" id="row-1"><div class="_actions_3b2b8f9"></div></div>
-        </div>
+        <aside class="_container_b3e8f28">
+          <div class="_dropContainer_2e280ea">
+            <div class="_playQueueItemsContainer_01c88fe" data-test="playqueue">
+              <div class="_header_f4bacf5" data-test="playqueue-header">
+                <h2 data-test="playqueue-title">Play queue</h2>
+              </div>
+              <div data-test="playqueue-item" data-test-media-item-id="101" id="row-0"><div class="_actions_3b2b8f9"></div></div>
+              <div data-test="playqueue-item" data-test-media-item-id="202" id="row-1"><div class="_actions_3b2b8f9"></div></div>
+            </div>
+          </div>
+        </aside>
       </div>
       <footer data-test="footer-player">
         <div class="_utilityContainer_4b1f859">
@@ -291,7 +299,7 @@ describe('Native TIDAL UI integration', () => {
     await flushReact()
 
     expect(document.querySelector('._utilityButtons_4d7aaf9 [data-test="lunajam-footer-btn"]')).not.toBeNull()
-    expect(document.querySelector('._container_b3e8f28 > .lj-queue-mount')).not.toBeNull()
+    expect(document.querySelector('[data-test="playqueue-header"] + .lj-queue-mount')).not.toBeNull()
 
     const badge1 = row1.querySelector<HTMLButtonElement>('.lj-track-avatar')
     expect(badge1).not.toBeNull()
@@ -335,5 +343,78 @@ describe('Native TIDAL UI integration', () => {
     await flushReact()
 
     expect(document.querySelector('.lj-ctx-layer')).toBeNull()
+  })
+
+  it('transitions guest playback via MOVE_TO even when playQueue/RESET already updated currentIndex', () => {
+    const unloads = new Set<() => void>()
+    const session = new SessionClient()
+    const clock = new ClockSync()
+    const room: RoomSnapshot = {
+      code: 'M8P3K7Q2',
+      hostCid: 'c1',
+      allowGuestControl: false,
+      allowGuestAdd: true,
+      participants: [
+        { cid: 'c1', name: 'Host', avatarUrl: null, tidalUserId: '1', role: 'host', audioMode: 'remote', canAddTracks: true },
+        { cid: 'c2', name: 'Guest', avatarUrl: null, tidalUserId: '2', role: 'guest', audioMode: 'remote', canAddTracks: true },
+      ],
+      queue: [
+        { uid: 'u1', trackId: '101', title: 'Old Song', artist: 'Artist A', addedBy: { cid: 'c1', name: 'Host', avatarUrl: null } },
+        { uid: 'u2', trackId: '202', title: 'New Song', artist: 'Artist B', addedBy: { cid: 'c1', name: 'Host', avatarUrl: null } },
+      ],
+      currentIndex: 1,
+      playback: { trackId: '202', queueUid: 'u2', posMs: 12000, serverTs: Date.now(), playing: true },
+    }
+
+    ;(session as unknown as { updateState: (p: unknown) => void }).updateState({
+      status: 'connected',
+      role: 'guest',
+      cid: 'c2',
+      room,
+      audioMode: 'remote',
+    })
+
+    setFakeQueue([{ uid: 'local-0', mediaItemId: '999' }], 0)
+    setFakePlaybackContext('999', 5)
+
+    const queueSync = new TidalQueueSync(unloads, {
+      isActive: () => Boolean(session.snapshot().room),
+      getRole: () => session.snapshot().role,
+      canGuestEdit: () => Boolean(session.snapshot().room?.allowGuestControl),
+      canGuestAdd: () => Boolean(session.snapshot().room?.allowGuestAdd),
+      getLocalProfile: () => ({ cid: 'c2', name: 'Guest', avatarUrl: null }),
+      getRoom: () => session.snapshot().room,
+      onGuestAdd: () => {},
+      onGuestMove: () => {},
+      onGuestRemove: () => {},
+      onHostReplaceQueue: () => {},
+      onStartJamWithTracks: () => {},
+      onRestricted: () => {},
+      onAddRestricted: () => {},
+    })
+
+    const bridge = new TidalPlaybackBridge(unloads, {
+      isActive: () => Boolean(session.snapshot().room),
+      getRole: () => session.snapshot().role,
+      getAudioMode: () => session.snapshot().audioMode,
+      canGuestControl: () => Boolean(session.snapshot().room?.allowGuestControl),
+      getQueueUidForIndex: (i) => queueSync.roomUidAtNativeIndex(i),
+      getIndexForQueueUid: (uid) => queueSync.nativeIndexForRoomUid(uid),
+      getRoomIndexForNativeIndex: (i) => queueSync.roomIndexForNativeIndex(i),
+      onHostBroadcast: () => {},
+      onGuestControl: () => {},
+      onRestricted: () => {},
+    })
+
+    queueSync.applyRoomToNative(room)
+    bridge.applyRemoteTick(room.playback!, room.queue, room.currentIndex, 'remote', clock)
+
+    const actions = getDispatched()
+    expect(actions).toContainEqual({ type: 'playQueue/MOVE_TO', payload: 1 })
+    expect(actions).toContainEqual({ type: 'playbackControls/PLAY', payload: undefined })
+    expect(actions.some((a) => a.type === 'playbackControls/SEEK')).toBe(true)
+
+    for (const unload of unloads) unload()
+    session.dispose()
   })
 })

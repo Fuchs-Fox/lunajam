@@ -1,13 +1,20 @@
 import type { LunaUnload } from '@luna/core'
 import { ContextMenu, MediaItem, PlayState, redux } from '@luna/lib'
 import type { InsertPosition, Profile, QueueTrack, QueueTrackInput, QueueTrackReplace, Role, RoomSnapshot } from '../protocol'
-import { buildQueueInputs, getCachedMeta } from './metadata'
+import { buildQueueInputs, getCachedMeta, toNativeItemId } from './metadata'
 
 const QUEUE_MUTATION_ACTIONS: redux.ActionType[] = [
   'playQueue/ADD_NEXT',
   'playQueue/ADD_AT_INDEX',
   'playQueue/ADD_LAST',
   'playQueue/ADD_NOW',
+  'playQueue/ADD_NOW_REST_OF_TRACK_LIST',
+  'playQueue/ADD_TRACK_LIST_TO_PLAY_QUEUE',
+  'playQueue/ADD_ALREADY_LOADED_ITEMS_TO_QUEUE',
+  'playQueue/ADD_MEDIA_ITEMS_TO_QUEUE',
+  'playQueue/ADD_SHUFFLED_REST_OF_TRACK_LIST' as redux.ActionType,
+  'playQueue/LOAD_TRACK_LIST_AND_ADD_TO_PLAY_QUEUE' as redux.ActionType,
+  'playQueue/RESET',
   'playQueue/MOVE_TRACK',
   'playQueue/REMOVE_AT_INDEX',
   'playQueue/REMOVE_ELEMENT',
@@ -22,6 +29,7 @@ export class TidalQueueSync {
   private roomTrackByNativeUid = new Map<string, QueueTrack>()
   private roomTrackByRoomUid = new Map<string, QueueTrack>()
   private pendingHostReconcile = false
+  private lastObservedElements: unknown = null
   private contextBtn: ReturnType<typeof ContextMenu.addButton>
 
   constructor(
@@ -37,12 +45,25 @@ export class TidalQueueSync {
       onGuestMove: (roomUid: string, toIndex: number) => void
       onGuestRemove: (roomUid: string) => void
       onHostReplaceQueue: (queue: QueueTrackReplace[], currentIndex: number) => void
+      onHostQueueReconciled?: (currentIndex: number) => void
       onStartJamWithTracks: (trackIds: string[]) => void
       onRestricted: () => void
       onAddRestricted: () => void
     },
   ) {
+    this.lastObservedElements = PlayState.playQueue.elements
     this.contextBtn = ContextMenu.addButton(unloads)
+    if (typeof (redux.store as { subscribe?: unknown }).subscribe === 'function') {
+      const unsubStore = redux.store.subscribe(() => {
+        if (!this.hooks.isActive() || this.hooks.getRole() !== 'host' || this.selfOps > 0) return
+        const elements = PlayState.playQueue.elements
+        if (elements !== this.lastObservedElements) {
+          this.lastObservedElements = elements
+          this.scheduleHostReconcile()
+        }
+      })
+      unloads.add(unsubStore)
+    }
     redux.intercept(QUEUE_MUTATION_ACTIONS, unloads, (payload, actionName) => {
       if (!this.hooks.isActive() || this.selfOps > 0) return
       const role = this.hooks.getRole()
@@ -104,7 +125,27 @@ export class TidalQueueSync {
         return true
       }
 
-      if (actionName === 'playQueue/ADD_NOW' || actionName === 'playQueue/CLEAR_QUEUE') {
+      if (actionName === 'playQueue/ADD_NOW') {
+        const ids = ((payload as { mediaItemIds?: unknown } | null)?.mediaItemIds ?? []) as unknown[]
+        const trackIds = ids.map(String).filter(Boolean)
+        if (trackIds.length > 0 && this.hooks.canGuestAdd()) {
+          this.hooks.onGuestAdd(trackIds, 'next')
+        } else {
+          this.hooks.onRestricted()
+        }
+        return true
+      }
+
+      if (
+        actionName === 'playQueue/CLEAR_QUEUE' ||
+        actionName === 'playQueue/RESET' ||
+        actionName === 'playQueue/ADD_NOW_REST_OF_TRACK_LIST' ||
+        actionName === 'playQueue/ADD_TRACK_LIST_TO_PLAY_QUEUE' ||
+        actionName === 'playQueue/ADD_ALREADY_LOADED_ITEMS_TO_QUEUE' ||
+        actionName === 'playQueue/ADD_MEDIA_ITEMS_TO_QUEUE' ||
+        (actionName as string) === 'playQueue/ADD_SHUFFLED_REST_OF_TRACK_LIST' ||
+        (actionName as string) === 'playQueue/LOAD_TRACK_LIST_AND_ADD_TO_PLAY_QUEUE'
+      ) {
         this.hooks.onRestricted()
         return true
       }
@@ -179,6 +220,7 @@ export class TidalQueueSync {
       pq.currentIndex === room.currentIndex
 
     if (sameTrackSet) {
+      this.lastObservedElements = pq.elements
       this.rebuildNativeIndexMap(room)
       return
     }
@@ -196,7 +238,7 @@ export class TidalQueueSync {
 
     const baseCounter = (pq.uniqueIdCounter ?? 0) + 1
     const elements = room.queue.map((t, i) => ({
-      mediaItemId: t.trackId,
+      mediaItemId: toNativeItemId(t.trackId),
       priority: 'priority_none' as const,
       context: { type: 'UNKNOWN' as const },
       uid: `lj_${t.uid}_${baseCounter + i}`,
@@ -239,6 +281,22 @@ export class TidalQueueSync {
     return -1
   }
 
+  roomIndexForNativeIndex(nativeIndex: number): number {
+    const room = this.hooks.getRoom()
+    if (!room || room.queue.length === 0) return -1
+    const el = PlayState.playQueue.elements[nativeIndex]
+    if (el) {
+      const roomUid = this.roomUidByNativeUid.get(el.uid)
+      if (roomUid) {
+        const idx = room.queue.findIndex((t) => t.uid === roomUid)
+        if (idx >= 0) return idx
+      }
+      const trackIdx = room.queue.findIndex((t) => t.trackId === String(el.mediaItemId))
+      if (trackIdx >= 0) return trackIdx
+    }
+    return Math.max(0, Math.min(room.queue.length - 1, nativeIndex))
+  }
+
   clearMappings(): void {
     this.roomUidByNativeUid.clear()
     this.roomTrackByNativeUid.clear()
@@ -262,7 +320,7 @@ export class TidalQueueSync {
         }
       }
 
-      const beforeIds = room.queue.slice(0, room.currentIndex).map((t) => t.trackId)
+      const beforeIds = room.queue.slice(0, room.currentIndex).map((t) => toNativeItemId(t.trackId))
       if (beforeIds.length > 0) {
         redux.actions['playQueue/ADD_AT_INDEX']({
           mediaItemIds: beforeIds,
@@ -271,7 +329,7 @@ export class TidalQueueSync {
         })
       }
 
-      const afterIds = room.queue.slice(room.currentIndex + 1).map((t) => t.trackId)
+      const afterIds = room.queue.slice(room.currentIndex + 1).map((t) => toNativeItemId(t.trackId))
       if (afterIds.length > 0) {
         redux.actions['playQueue/ADD_LAST']({
           mediaItemIds: afterIds,
@@ -355,6 +413,7 @@ export class TidalQueueSync {
       )
 
       this.hooks.onHostReplaceQueue(replacements, relIndex)
+      this.hooks.onHostQueueReconciled?.(relIndex)
     })
   }
 
@@ -363,6 +422,7 @@ export class TidalQueueSync {
     try {
       fn()
     } finally {
+      this.lastObservedElements = PlayState.playQueue.elements
       this.selfOps--
     }
   }

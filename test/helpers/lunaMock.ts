@@ -32,6 +32,7 @@ const interceptMap = new Map<string, Set<InterceptFn>>()
 const dispatched: Array<{ type: string; payload: unknown }> = []
 const stateListeners = new Set<(s: string) => void>()
 const transitionListeners = new Set<(item: unknown) => void>()
+const storeSubscribers = new Set<() => void>()
 
 export function resetLunaMock(): void {
   storeState.playQueue.currentIndex = 0
@@ -44,6 +45,12 @@ export function resetLunaMock(): void {
   dispatched.length = 0
   stateListeners.clear()
   transitionListeners.clear()
+  storeSubscribers.clear()
+}
+
+export function setFakePlaybackContext(actualProductId: string, timeSec = 0): void {
+  storeState.playbackControls.playbackContext.actualProductId = actualProductId
+  storeState.playbackControls.latestCurrentTime = timeSec
 }
 
 export function setFakeQueue(
@@ -91,6 +98,10 @@ export class StyleTag {
 export const redux = {
   store: {
     getState: () => storeState,
+    subscribe(cb: () => void) {
+      storeSubscribers.add(cb)
+      return () => storeSubscribers.delete(cb)
+    },
   },
   actions: new Proxy<Record<string, (payload?: unknown) => void>>(
     {},
@@ -110,9 +121,18 @@ export const redux = {
             if (typeof p.currentIndex === 'number') storeState.playQueue.currentIndex = p.currentIndex
           } else if (prop === 'playQueue/MOVE_TO' && typeof payload === 'number') {
             storeState.playQueue.currentIndex = payload
+            const el = storeState.playQueue.elements[payload]
+            if (el) storeState.playbackControls.playbackContext.actualProductId = String(el.mediaItemId)
           } else if (prop === 'playQueue/SET_CURRENT_INDEX' && typeof payload === 'number') {
             storeState.playQueue.currentIndex = payload
+          } else if (prop === 'playbackControls/PLAY') {
+            storeState.playbackControls.desiredPlaybackState = 'PLAYING'
+          } else if (prop === 'playbackControls/PAUSE') {
+            storeState.playbackControls.desiredPlaybackState = 'PAUSED'
+          } else if (prop === 'playbackControls/SEEK' && typeof payload === 'number') {
+            storeState.playbackControls.latestCurrentTime = payload
           }
+          for (const cb of storeSubscribers) cb()
         }
       },
     },

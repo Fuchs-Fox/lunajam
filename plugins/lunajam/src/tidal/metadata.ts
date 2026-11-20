@@ -1,8 +1,59 @@
-import { MediaItem } from '@luna/lib'
+import { MediaItem, redux } from '@luna/lib'
 import type { QueueTrack, QueueTrackInput, TrackMetaUpdate } from '../protocol'
 
 const cache = new Map<string, TrackMetaUpdate>()
 const inflight = new Map<string, Promise<TrackMetaUpdate | null>>()
+const storeLoadInFlight = new Map<string, Promise<boolean>>()
+
+export function toNativeItemId(trackId: string): redux.ItemId {
+  const num = Number(trackId)
+  return Number.isInteger(num) && num > 0 ? num : trackId
+}
+
+export function isTrackInStore(trackId: string): boolean {
+  const state = redux.store.getState() as { content?: { mediaItems?: Record<string, unknown> } }
+  if (!state.content?.mediaItems) return true
+  return Boolean(state.content.mediaItems[String(trackId)])
+}
+
+export function ensureTrackInStore(trackId: string): Promise<boolean> {
+  if (isTrackInStore(trackId)) return Promise.resolve(true)
+  const existing = storeLoadInFlight.get(trackId)
+  if (existing) return existing
+  const work = (async () => {
+    try {
+      const item = await MediaItem.fromId(toNativeItemId(trackId))
+      if (item && !cache.has(trackId)) {
+        resolveTrackMeta(trackId).catch(() => {})
+      }
+      return isTrackInStore(trackId) || Boolean(item)
+    } catch {
+      return false
+    } finally {
+      storeLoadInFlight.delete(trackId)
+    }
+  })()
+  storeLoadInFlight.set(trackId, work)
+  return work
+}
+
+export async function ensureQueueInStore(trackIds: string[], priorityTrackId?: string | null): Promise<boolean> {
+  const uniqueIds = [...new Set(trackIds.filter(Boolean))]
+  let fetchedAny = false
+  if (priorityTrackId && !isTrackInStore(priorityTrackId)) {
+    await ensureTrackInStore(priorityTrackId)
+    fetchedAny = true
+  }
+  const missing = uniqueIds.filter((id) => id !== priorityTrackId && !isTrackInStore(id))
+  if (missing.length > 0) {
+    fetchedAny = true
+    for (let i = 0; i < missing.length; i += 4) {
+      const chunk = missing.slice(i, i + 4)
+      await Promise.all(chunk.map((id) => ensureTrackInStore(id)))
+    }
+  }
+  return fetchedAny
+}
 
 export function getCachedMeta(trackId: string): TrackMetaUpdate | undefined {
   return cache.get(trackId)
@@ -16,7 +67,7 @@ export async function resolveTrackMeta(trackId: string): Promise<TrackMetaUpdate
 
   const work = (async () => {
     try {
-      const item = await MediaItem.fromId(trackId)
+      const item = await MediaItem.fromId(toNativeItemId(trackId))
       if (!item) return null
       const tidalItem = item.tidalItem
       const rawTitle = await item.title().catch(() => tidalItem?.title ?? '')

@@ -3,6 +3,7 @@ import { MediaItem, PlayState, redux } from '@luna/lib'
 import type { AudioMode, ControlAction, PlaybackInput, PlaybackSnapshot, QueueTrack, Role } from '../protocol'
 import type { ClockSync } from '../sync/clock'
 import { DriftController } from '../sync/drift'
+import { ensureTrackInStore, isTrackInStore, toNativeItemId } from './metadata'
 
 const HOST_PLAYBACK_ACTIONS: redux.ActionType[] = [
   'playbackControls/PLAY',
@@ -15,6 +16,9 @@ export class TidalPlaybackBridge {
   private drift = new DriftController()
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private lastTrackId: string | null = null
+  private pendingLoadTrackId: string | null = null
+  private pendingLoadAt = 0
+  private needsInitialSeekForTrack: string | null = null
   private disposed = false
 
   constructor(
@@ -26,14 +30,21 @@ export class TidalPlaybackBridge {
       canGuestControl: () => boolean
       getQueueUidForIndex: (index: number) => string | null
       getIndexForQueueUid: (uid: string) => number
+      getRoomIndexForNativeIndex?: (nativeIndex: number) => number
       onHostBroadcast: (playback: PlaybackInput, currentIndex: number) => void
       onGuestControl: (action: ControlAction) => void
+      onGuestReadyToSync?: () => void
       onRestricted: () => void
     },
   ) {
     MediaItem.onMediaTransition(unloads, () => {
-      if (this.hooks.isActive() && this.hooks.getRole() === 'host') {
+      if (!this.hooks.isActive()) return
+      const role = this.hooks.getRole()
+      if (role === 'host') {
         this.emitHostState()
+      } else if (role === 'guest') {
+        this.pendingLoadTrackId = null
+        this.hooks.onGuestReadyToSync?.()
       }
     })
 
@@ -71,6 +82,23 @@ export class TidalPlaybackBridge {
       else if (actionName === 'playbackControls/PAUSE') this.hooks.onGuestControl({ kind: 'pause' })
       else this.hooks.onGuestControl({ kind: PlayState.playing ? 'pause' : 'play' })
       return true
+    })
+
+    redux.intercept(['playbackControls/SKIP_NEXT', 'playbackControls/SKIP_PREVIOUS'], unloads, (_, actionName) => {
+      if (!this.hooks.isActive() || this.selfOps > 0) return
+      const role = this.hooks.getRole()
+      if (role === 'host') {
+        queueMicrotask(() => this.emitHostState())
+        return
+      }
+      if (role === 'guest') {
+        if (!this.hooks.canGuestControl()) {
+          this.hooks.onRestricted()
+          return true
+        }
+        this.hooks.onGuestControl({ kind: actionName === 'playbackControls/SKIP_NEXT' ? 'next' : 'prev' })
+        return true
+      }
     })
 
     redux.intercept(['playQueue/MOVE_NEXT', 'playQueue/MOVE_PREVIOUS', 'playQueue/MOVE_TO'], unloads, (payload, actionName) => {
@@ -167,30 +195,74 @@ export class TidalPlaybackBridge {
       }
       this.drift.reset()
       this.lastTrackId = playback.trackId
+      this.pendingLoadTrackId = null
+      this.needsInitialSeekForTrack = null
       return
     }
 
     if (!playback.trackId) return
+    const targetTrackId = playback.trackId
+
+    if (!isTrackInStore(targetTrackId)) {
+      ensureTrackInStore(targetTrackId)
+        .then((loaded) => {
+          if (loaded && !this.disposed) this.hooks.onGuestReadyToSync?.()
+        })
+        .catch(() => {})
+      return
+    }
 
     const pq = PlayState.playQueue
     const targetIdx =
-      currentIndex >= 0 && currentIndex < pq.elements.length && String(pq.elements[currentIndex]?.mediaItemId) === playback.trackId
+      currentIndex >= 0 && currentIndex < pq.elements.length && String(pq.elements[currentIndex]?.mediaItemId) === targetTrackId
         ? currentIndex
-        : pq.elements.findIndex((el: redux.PlayQueueElement) => String(el.mediaItemId) === playback.trackId)
+        : pq.elements.findIndex((el: redux.PlayQueueElement) => String(el.mediaItemId) === targetTrackId)
 
-    let trackSwitched = false
-    if (targetIdx >= 0 && pq.currentIndex !== targetIdx) {
-      trackSwitched = true
-      this.ownOp(() => PlayState.moveTo(targetIdx))
-    } else if (this.lastTrackId !== playback.trackId) {
-      trackSwitched = true
+    const rawActual = PlayState.playbackContext?.actualProductId
+    const actualTrackId = rawActual !== undefined && rawActual !== null && String(rawActual) !== '' ? String(rawActual) : null
+    const actualMismatch = actualTrackId !== null && actualTrackId !== targetTrackId
+    const trackSwitched = this.lastTrackId !== targetTrackId
+
+    if (trackSwitched) {
+      this.needsInitialSeekForTrack = targetTrackId
+      this.lastTrackId = targetTrackId
     }
-    this.lastTrackId = playback.trackId
+
+    const mustTriggerLoad = targetIdx >= 0 ? pq.currentIndex !== targetIdx || actualMismatch || trackSwitched : actualMismatch || trackSwitched
+
+    if (mustTriggerLoad) {
+      const nowMs = performance.now()
+      const loadInFlight = this.pendingLoadTrackId === targetTrackId && nowMs - this.pendingLoadAt < 3000
+      if (!loadInFlight) {
+        this.pendingLoadTrackId = targetTrackId
+        this.pendingLoadAt = nowMs
+        this.needsInitialSeekForTrack = targetTrackId
+        if (targetIdx >= 0) {
+          this.ownOp(() => PlayState.moveTo(targetIdx))
+        } else {
+          this.ownOp(() => PlayState.play(toNativeItemId(targetTrackId)))
+        }
+      }
+      const postActual = PlayState.playbackContext?.actualProductId
+      const postTrackId = postActual !== undefined && postActual !== null && String(postActual) !== '' ? String(postActual) : null
+      if (postTrackId !== null && postTrackId !== targetTrackId) {
+        return
+      }
+    }
+
+    this.pendingLoadTrackId = null
 
     if (playback.playing && !PlayState.playing) {
       this.ownOp(() => PlayState.play())
     } else if (!playback.playing && PlayState.playing) {
       this.ownOp(() => PlayState.pause())
+    }
+
+    const finalActual = PlayState.playbackContext?.actualProductId
+    const finalTrackId = finalActual !== undefined && finalActual !== null && String(finalActual) !== '' ? String(finalActual) : null
+    const needsSeek = this.needsInitialSeekForTrack === targetTrackId
+    if (finalTrackId === targetTrackId) {
+      this.needsInitialSeekForTrack = null
     }
 
     const elapsedMs = playback.playing ? Math.max(0, clock.serverNow() - playback.serverTs) : 0
@@ -201,7 +273,7 @@ export class TidalPlaybackBridge {
       actualMs,
       playing: playback.playing,
       nowMs: performance.now(),
-      forceSeek: trackSwitched || queue.length === 0,
+      forceSeek: needsSeek || trackSwitched || queue.length === 0,
     })
 
     if (decision.action === 'seek') {
@@ -215,13 +287,17 @@ export class TidalPlaybackBridge {
   resetSync(): void {
     this.drift.reset()
     this.lastTrackId = null
+    this.pendingLoadTrackId = null
+    this.needsInitialSeekForTrack = null
     this.setMediaRate(1)
   }
 
   private emitHostState(overridePosMs?: number): void {
     const pb = this.readLocalPlayback()
     if (overridePosMs !== undefined) pb.posMs = Math.max(0, Math.round(overridePosMs))
-    this.hooks.onHostBroadcast(pb, PlayState.playQueue.currentIndex)
+    const nativeIdx = PlayState.playQueue.currentIndex
+    const roomIdx = this.hooks.getRoomIndexForNativeIndex?.(nativeIdx) ?? -1
+    this.hooks.onHostBroadcast(pb, roomIdx >= 0 ? roomIdx : nativeIdx)
   }
 
   private ownOp(fn: () => void): void {

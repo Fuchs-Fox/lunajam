@@ -145,6 +145,7 @@ export class DiscordPresenceController {
       buttons.push({ label: 'Play on TIDAL', url: `https://tidal.com/browse/track/${trackId}` })
 
       const activity: WireActivity = {
+        name: 'TIDAL',
         type: 2,
         status_display_type: 0,
         details: fmtField(title),
@@ -235,6 +236,7 @@ export class DiscordPresenceController {
     buttons.push({ label: 'Play on TIDAL', url: `https://tidal.com/browse/track/${trackId}` })
 
     const activity: WireActivity = {
+      name: 'TIDAL',
       type: 2,
       status_display_type: 0,
       details: fmtField(title),

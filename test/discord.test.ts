@@ -6,7 +6,7 @@ import * as path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { WebSocketServer } from 'ws'
 import { drainLoopbackJoins, startLoopback, stopLoopback } from '../plugins/lunajam/src/discord/loopback.native'
-import { rpcDisconnect, rpcSetActivity } from '../plugins/lunajam/src/discord/rpc.native'
+import { candidateSockets, rpcDisconnect, rpcSetActivity } from '../plugins/lunajam/src/discord/rpc.native'
 
 function encodeIpc(op: number, data: unknown): Buffer {
   const body = Buffer.from(JSON.stringify(data), 'utf8')
@@ -150,5 +150,20 @@ describe('Discord native RPC & loopback bridge', () => {
     const joins = await drainLoopbackJoins()
     expect(joins).toEqual([{ code: 'K7M4P9Q2', serverUrl: 'https://lunajam.sn0w13.de' }])
     expect(await drainLoopbackJoins()).toEqual([])
+  })
+
+  it('includes Flatpak Equibop and Vesktop xdg-run IPC paths in Linux socket candidates', () => {
+    if (process.platform === 'win32') return
+    const prev = process.env.XDG_RUNTIME_DIR
+    process.env.XDG_RUNTIME_DIR = '/run/user/1001'
+    try {
+      const candidates = candidateSockets()
+      expect(candidates).toContain('/run/user/1001/.flatpak/org.equicord.equibop/xdg-run/discord-ipc-0')
+      expect(candidates).toContain('/run/user/1001/.flatpak/dev.vencord.Vesktop/xdg-run/discord-ipc-0')
+      expect(candidates).toContain('/run/user/1001/discord-ipc-0')
+    } finally {
+      if (prev === undefined) delete process.env.XDG_RUNTIME_DIR
+      else process.env.XDG_RUNTIME_DIR = prev
+    }
   })
 })

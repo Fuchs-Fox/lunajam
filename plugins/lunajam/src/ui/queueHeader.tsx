@@ -7,11 +7,16 @@ import { openParticipantMenu } from './participantMenu'
 
 export function findPlayQueueAside(): HTMLElement | null {
   if (typeof document === 'undefined') return null
+  const pqHeader = document.querySelector<HTMLElement>('[data-test="playqueue-header"]')
+  if (pqHeader?.parentElement) return pqHeader.parentElement
+  const pqContainer = document.querySelector<HTMLElement>('[data-test="playqueue"]')
+  if (pqContainer) return pqContainer
   const titleEl = document.querySelector<HTMLElement>('[data-test="playqueue-title"]')
   if (titleEl) {
     const panel =
-      titleEl.closest<HTMLElement>('[class*="_container_"], [class*="_playQueueWrapper_"], aside') ??
-      titleEl.parentElement?.parentElement
+      titleEl.closest<HTMLElement>(
+        '[data-test="playqueue"], [class*="_playQueueItemsContainer_"], [class*="_container_"], aside',
+      ) ?? titleEl.parentElement?.parentElement
     if (panel) return panel
   }
   const direct = document.querySelector<HTMLElement>(
@@ -23,7 +28,7 @@ export function findPlayQueueAside(): HTMLElement | null {
   )
   if (!item) return null
   return item.closest<HTMLElement>(
-    'aside, [role="complementary"], section, [class*="_playQueueWrapper_"], [class*="_sidebar_"]',
+    '[data-test="playqueue"], aside, [role="complementary"], section, [class*="_playQueueWrapper_"], [class*="_sidebar_"]',
   )
 }
 
@@ -122,10 +127,14 @@ export class QueueHeaderMount {
       }
 
       if (!this.container.isConnected || this.container.parentElement !== aside) {
+        const directHeader = aside.querySelector<HTMLElement>(':scope > [data-test="playqueue-header"]')
         const titleParent = aside.querySelector<HTMLElement>('[data-test="playqueue-title"]')?.parentElement
         const headerEl =
+          directHeader ??
           (titleParent && titleParent.parentElement === aside ? titleParent : null) ??
-          aside.querySelector<HTMLElement>('[data-test="play-queue-header"], header, [class*="_header_"]')
+          aside.querySelector<HTMLElement>(
+            ':scope > [data-test="play-queue-header"], :scope > header, :scope > [class*="_header_"]',
+          )
         if (headerEl && headerEl.parentElement === aside) {
           headerEl.insertAdjacentElement('afterend', this.container)
         } else {

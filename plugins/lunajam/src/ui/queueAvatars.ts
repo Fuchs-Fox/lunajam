@@ -174,7 +174,7 @@ export class QueueAvatarDecorator {
             track = room.queue[matchIdx]
           }
         }
-        if (!track) {
+        if (!track && !info.trackId) {
           const fallbackIdx = Math.max(0, room.currentIndex) + domIdx
           track = room.queue[fallbackIdx] ?? room.queue[domIdx]
         }

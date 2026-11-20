@@ -1,6 +1,7 @@
 .lj-root {
-  --lj-bg: var(--wave-color-solid-base-brighter, #141519);
-  --lj-surface: var(--wave-color-solid-contrast-fill, #1d1f26);
+  --lj-bg: var(--wave-color-solid-base-brighter, #181920);
+  --lj-surface: rgba(255, 255, 255, 0.06);
+  --lj-ring: #1d1e24;
   --lj-surface-hover: rgba(255, 255, 255, 0.08);
   --lj-border: rgba(255, 255, 255, 0.1);
   --lj-border-strong: rgba(255, 255, 255, 0.16);
@@ -149,6 +150,10 @@
 .lj-queue-mount {
   margin: 8px 12px 12px;
   flex-shrink: 0;
+}
+
+[data-test="playqueue"] > .lj-queue-mount {
+  margin: 0 0 16px;
 }
 
 .lj-queue-card {
@@ -390,7 +395,7 @@
 
 .lj-avatar-stack .lj-avatar + .lj-avatar {
   margin-left: -6px;
-  box-shadow: 0 0 0 2px var(--lj-surface);
+  box-shadow: 0 0 0 2px var(--lj-ring);
 }
 
 .lj-avatar-extra {
@@ -399,7 +404,7 @@
   padding: 0 6px;
   border-radius: 9999px;
   background: #272a34;
-  box-shadow: 0 0 0 2px var(--lj-surface);
+  box-shadow: 0 0 0 2px var(--lj-ring);
   color: var(--lj-text);
   font-size: 10px;
   font-weight: 600;

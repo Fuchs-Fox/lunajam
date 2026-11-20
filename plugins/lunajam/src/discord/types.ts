@@ -4,6 +4,7 @@ export interface RpcButton {
 }
 
 export interface WireActivity {
+  name?: string
   type?: number
   status_display_type?: number
   details?: string

@@ -5,7 +5,7 @@ import { DiscordPresenceController } from './discord/presence'
 import type { AudioMode, RoomSnapshot } from './protocol'
 import { SessionClient } from './session/client'
 import { localProfile } from './tidal/identity'
-import { findMissingMetadata } from './tidal/metadata'
+import { ensureQueueInStore, findMissingMetadata } from './tidal/metadata'
 import { TidalPlaybackBridge } from './tidal/playback'
 import { TidalQueueSync } from './tidal/queueSync'
 import { FooterButtonMount } from './ui/footerButton'
@@ -107,6 +107,7 @@ const queueSync = new TidalQueueSync(unloads, {
   onGuestMove: (roomUid, toIndex) => session.moveTrack(roomUid, toIndex),
   onGuestRemove: (roomUid) => session.removeTrack(roomUid),
   onHostReplaceQueue: (queue, currentIndex) => session.replaceQueue(queue, currentIndex),
+  onHostQueueReconciled: (currentIndex) => session.syncPlayback(playback.readLocalPlayback(), currentIndex),
   onStartJamWithTracks: (trackIds) => {
     startJam(trackIds).catch(() => {})
   },
@@ -121,8 +122,15 @@ const playback = new TidalPlaybackBridge(unloads, {
   canGuestControl: () => Boolean(session.snapshot().room?.allowGuestControl),
   getQueueUidForIndex: (index) => queueSync.roomUidAtNativeIndex(index),
   getIndexForQueueUid: (uid) => queueSync.nativeIndexForRoomUid(uid),
+  getRoomIndexForNativeIndex: (index) => queueSync.roomIndexForNativeIndex(index),
   onHostBroadcast: (pb, currentIndex) => session.syncPlayback(pb, currentIndex),
   onGuestControl: (action) => session.sendControl(action),
+  onGuestReadyToSync: () => {
+    const s = session.snapshot()
+    if (s.role === 'guest' && s.room?.playback) {
+      playback.applyRemoteTick(s.room.playback, s.room.queue, s.room.currentIndex, s.audioMode, session.clock)
+    }
+  },
   onRestricted: () => showToast('Host restricted playback controls', 'warn'),
 })
 
@@ -224,6 +232,28 @@ unloads.add(
     }
 
     queueAvatars.refresh()
+
+    ensureQueueInStore(
+      room.queue.map((t) => t.trackId),
+      room.playback?.trackId,
+    )
+      .then((loadedNew) => {
+        if (!loadedNew) return
+        const latest = session.snapshot()
+        if (!latest.room || latest.room.code !== room.code) return
+        queueSync.applyRoomToNative(latest.room)
+        if (latest.role === 'guest' && latest.room.playback) {
+          playback.applyRemoteTick(
+            latest.room.playback,
+            latest.room.queue,
+            latest.room.currentIndex,
+            latest.audioMode,
+            session.clock,
+          )
+        }
+        queueAvatars.refresh()
+      })
+      .catch(() => {})
 
     findMissingMetadata(room.queue, attemptedMeta)
       .then((updates) => {
