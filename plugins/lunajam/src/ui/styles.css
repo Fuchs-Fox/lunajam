@@ -1,0 +1,955 @@
+.lj-root {
+  --lj-bg: var(--wave-color-solid-base-brighter, #141519);
+  --lj-surface: var(--wave-color-solid-contrast-fill, #1d1f26);
+  --lj-surface-hover: rgba(255, 255, 255, 0.08);
+  --lj-border: rgba(255, 255, 255, 0.1);
+  --lj-border-strong: rgba(255, 255, 255, 0.16);
+  --lj-text: #ffffff;
+  --lj-text-muted: rgba(255, 255, 255, 0.64);
+  --lj-text-dim: rgba(255, 255, 255, 0.44);
+  --lj-accent: #2ee6d6;
+  --lj-accent-tint: rgba(46, 230, 214, 0.14);
+  --lj-accent-border: rgba(46, 230, 214, 0.42);
+  --lj-danger: #fca5a5;
+  --lj-danger-bg: rgba(239, 68, 68, 0.16);
+  --lj-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: inherit;
+  color: var(--lj-text);
+  box-sizing: border-box;
+}
+
+.lj-root *,
+.lj-root *::before,
+.lj-root *::after {
+  box-sizing: border-box;
+}
+
+.lj-root .lj-footer-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 150ms var(--lj-spring), color 150ms var(--lj-spring), border-color 150ms var(--lj-spring), transform 140ms var(--lj-spring);
+}
+
+.lj-root .lj-footer-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.lj-root .lj-footer-btn:active {
+  transform: scale(0.96);
+}
+
+.lj-root .lj-footer-btn.is-live {
+  width: auto;
+  padding: 0 10px;
+  background: rgba(46, 230, 214, 0.14);
+  border-color: rgba(46, 230, 214, 0.42);
+  color: #2ee6d6;
+}
+
+.lj-root .lj-footer-btn.is-live:hover {
+  background: rgba(46, 230, 214, 0.2);
+}
+
+.lj-root .lj-footer-btn,
+.lj-root .lj-footer-btn:focus,
+.lj-root .lj-footer-btn:focus-visible {
+  border-radius: 8px !important;
+}
+
+.lj-root .lj-footer-btn:focus-visible,
+.lj-root .lj-btn:focus-visible,
+.lj-root .lj-segment-btn:focus-visible,
+.lj-root .lj-ctx-item:focus-visible {
+  opacity: 1 !important;
+  outline: 2px solid rgba(255, 255, 255, 0.88) !important;
+  outline-offset: 2px !important;
+}
+
+.lj-root .lj-btn,
+.lj-root .lj-btn:focus,
+.lj-root .lj-btn:focus-visible {
+  border-radius: 8px !important;
+}
+
+.lj-root .lj-btn.lj-btn-sm,
+.lj-root .lj-btn.lj-btn-sm:focus,
+.lj-root .lj-btn.lj-btn-sm:focus-visible,
+.lj-root .lj-segment-btn,
+.lj-root .lj-segment-btn:focus,
+.lj-root .lj-segment-btn:focus-visible {
+  border-radius: 6px !important;
+}
+
+.lj-root .lj-ctx-item,
+.lj-root .lj-ctx-item:focus,
+.lj-root .lj-ctx-item:focus-visible {
+  border-radius: 7px !important;
+}
+
+.lj-root .lj-switch:focus-visible,
+.lj-root .lj-avatar-stack:focus-visible,
+.lj-root .lj-avatar-btn:focus-visible,
+.lj-root .lj-track-avatar:focus-visible {
+  opacity: 1 !important;
+  border-radius: 9999px !important;
+  outline: 2px solid rgba(255, 255, 255, 0.88) !important;
+  outline-offset: 2px !important;
+}
+
+.lj-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: var(--lj-accent);
+  flex-shrink: 0;
+  animation: ljPulse 2200ms ease-in-out infinite;
+}
+
+.lj-dot.is-warn {
+  background: #f59e0b;
+}
+
+.lj-popover-layer {
+  position: fixed;
+  z-index: 9998;
+  width: 328px;
+  max-width: calc(100vw - 24px);
+}
+
+.lj-popover {
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--lj-bg);
+  border: 1px solid var(--lj-border-strong);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.62);
+  transform-origin: bottom right;
+  animation: ljPopIn 220ms var(--lj-spring) both;
+}
+
+.lj-popover.is-leaving {
+  animation: ljPopOut 160ms var(--lj-spring) both;
+}
+
+.lj-queue-mount {
+  margin: 8px 12px 12px;
+  flex-shrink: 0;
+}
+
+.lj-queue-card {
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--lj-surface);
+  border: 1px solid var(--lj-border);
+  animation: ljPopIn 220ms var(--lj-spring) both;
+}
+
+.lj-queue-card.is-pulsing {
+  border-color: var(--lj-accent-border);
+}
+
+.lj-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.lj-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lj-heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--lj-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.lj-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.lj-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--lj-text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 140ms var(--lj-spring), border-color 140ms var(--lj-spring), transform 140ms var(--lj-spring);
+}
+
+.lj-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.lj-btn:active {
+  transform: scale(0.97);
+}
+
+.lj-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+}
+
+.lj-btn-primary {
+  width: 100%;
+  height: 38px;
+  padding: 0 14px;
+  background: #ffffff;
+  color: #0a0a0c;
+  font-size: 13px;
+}
+
+.lj-btn-primary:hover {
+  background: #e6e8ec;
+}
+
+.lj-btn-sm {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+}
+
+.lj-btn-danger {
+  background: var(--lj-danger-bg);
+  color: var(--lj-danger);
+}
+
+.lj-btn-danger:hover {
+  background: rgba(239, 68, 68, 0.24);
+}
+
+.lj-btn-icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--lj-text-muted);
+}
+
+.lj-btn-icon:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--lj-text);
+}
+
+.lj-divider {
+  height: 1px;
+  margin: 12px 0;
+  background: var(--lj-border);
+  border: 0;
+}
+
+.lj-field-label {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lj-text-muted);
+}
+
+.lj-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.lj-input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--lj-border-strong);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--lj-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  transition: border-color 140ms var(--lj-spring);
+}
+
+.lj-input:focus {
+  border-color: var(--lj-accent);
+}
+
+.lj-input::placeholder {
+  color: var(--lj-text-dim);
+}
+
+.lj-segment {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--lj-border);
+}
+
+.lj-segment-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--lj-text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 150ms var(--lj-spring), color 150ms var(--lj-spring), transform 140ms var(--lj-spring);
+}
+
+.lj-segment-btn:active {
+  transform: scale(0.97);
+}
+
+.lj-segment-btn.is-active {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--lj-text);
+  font-weight: 600;
+}
+
+.lj-avatar-stack {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 140ms var(--lj-spring);
+}
+
+.lj-avatar-stack:hover {
+  transform: translateY(-1px);
+}
+
+.lj-avatar-stack:active {
+  transform: scale(0.97);
+}
+
+.lj-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: #ffffff;
+  font-weight: 600;
+  overflow: hidden;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.lj-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.lj-avatar-stack .lj-avatar + .lj-avatar {
+  margin-left: -6px;
+  box-shadow: 0 0 0 2px var(--lj-surface);
+}
+
+.lj-avatar-extra {
+  margin-left: -6px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: #272a34;
+  box-shadow: 0 0 0 2px var(--lj-surface);
+  color: var(--lj-text);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+}
+
+.lj-invite-panel {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--lj-border);
+  animation: ljPopIn 180ms var(--lj-spring) both;
+}
+
+.lj-qr-frame {
+  width: 76px;
+  height: 76px;
+  padding: 4px;
+  border-radius: 6px;
+  background: #ffffff;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lj-qr-frame svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.lj-invite-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.lj-room-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--lj-text);
+  margin: 0 0 4px;
+}
+
+.lj-room-url {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: var(--lj-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0 0 8px;
+}
+
+.lj-switch-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--lj-border);
+}
+
+.lj-switch-group .lj-switch-row {
+  padding-top: 0;
+  margin-top: 0;
+  border-top: 0;
+}
+
+.lj-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--lj-border);
+}
+
+.lj-switch-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lj-text);
+}
+
+.lj-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 160ms var(--lj-spring);
+}
+
+.lj-switch.is-on {
+  background: var(--lj-accent);
+}
+
+.lj-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #ffffff;
+  transition: transform 180ms var(--lj-spring), background-color 160ms var(--lj-spring);
+}
+
+.lj-switch.is-on .lj-switch-knob {
+  transform: translateX(16px);
+  background: #0a0a0c;
+}
+
+.lj-roster {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--lj-border);
+}
+
+.lj-roster-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--lj-text-muted);
+}
+
+.lj-roster-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  animation: ljRowIn 180ms var(--lj-spring) both;
+  animation-delay: calc(var(--lj-i, 0) * 35ms);
+}
+
+.lj-roster-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.lj-roster-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lj-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lj-roster-role {
+  font-size: 11px;
+  color: var(--lj-text-dim);
+}
+
+.lj-roster-role.is-host {
+  color: var(--lj-accent);
+}
+
+.lj-speaker-banner {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--lj-accent-tint);
+  border: 1px solid rgba(46, 230, 214, 0.24);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lj-accent);
+}
+
+.lj-error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--lj-danger);
+}
+
+.lj-mini-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 196px;
+  overflow-y: auto;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--lj-border);
+}
+
+.lj-mini-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 140ms var(--lj-spring);
+}
+
+.lj-mini-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.lj-mini-row.is-current {
+  background: var(--lj-accent-tint);
+}
+
+.lj-mini-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.lj-mini-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lj-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lj-mini-row.is-current .lj-mini-title {
+  color: var(--lj-accent);
+}
+
+.lj-mini-artist {
+  font-size: 11px;
+  color: var(--lj-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lj-track-avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin: 0 6px;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  flex-shrink: 0;
+  overflow: visible;
+  cursor: pointer;
+  z-index: 2;
+  transition: transform 140ms var(--lj-spring);
+}
+
+.lj-track-avatar:hover {
+  transform: scale(1.08);
+}
+
+.lj-track-avatar:active {
+  transform: scale(0.95);
+}
+
+.lj-track-avatar-inner {
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  transition: border-color 140ms var(--lj-spring), opacity 140ms var(--lj-spring);
+}
+
+.lj-track-avatar:hover .lj-track-avatar-inner {
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.lj-track-avatar.is-muted-add .lj-track-avatar-inner,
+.lj-avatar.is-muted-add {
+  opacity: 0.56;
+  border: 1px dashed rgba(255, 255, 255, 0.42);
+}
+
+.lj-track-avatar-inner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.lj-track-avatar[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #1d1f26;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+  z-index: 9999;
+}
+
+.lj-avatar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 140ms var(--lj-spring);
+}
+
+.lj-avatar-btn:hover {
+  transform: scale(1.06);
+}
+
+.lj-avatar-btn:hover .lj-avatar {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.28);
+}
+
+.lj-avatar-btn:active {
+  transform: scale(0.95);
+}
+
+.lj-muted-banner {
+  margin-top: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--lj-border);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lj-text-muted);
+}
+
+.lj-ctx-layer {
+  position: fixed;
+  z-index: 10020;
+}
+
+.lj-ctx-menu {
+  width: 228px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--lj-bg);
+  border: 1px solid var(--lj-border-strong);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.62);
+  transform-origin: top right;
+  animation: ljPopIn 150ms var(--lj-spring) both;
+}
+
+.lj-ctx-menu.is-leaving {
+  animation: ljPopOut 120ms var(--lj-spring) both;
+}
+
+.lj-ctx-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+}
+
+.lj-ctx-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.lj-ctx-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lj-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lj-ctx-sub {
+  font-size: 11px;
+  color: var(--lj-text-dim);
+}
+
+.lj-ctx-sub.is-host {
+  color: var(--lj-accent);
+}
+
+.lj-ctx-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--lj-border);
+}
+
+.lj-ctx-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--lj-text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 140ms var(--lj-spring), color 140ms var(--lj-spring), transform 130ms var(--lj-spring);
+}
+
+.lj-ctx-item:hover:not(:disabled) {
+  background: var(--lj-surface-hover);
+}
+
+.lj-ctx-item:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.lj-ctx-item:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.lj-ctx-item.is-danger {
+  color: var(--lj-danger);
+}
+
+.lj-ctx-item.is-danger:hover:not(:disabled) {
+  background: var(--lj-danger-bg);
+}
+
+.lj-ctx-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+}
+
+.lj-ctx-toggle-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lj-text);
+}
+
+.lj-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 96px;
+  z-index: 9999;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--lj-bg);
+  border: 1px solid var(--lj-border-strong);
+  color: var(--lj-text);
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  animation: ljPopIn 180ms var(--lj-spring) both;
+}
+
+.lj-toast.is-warn {
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
+.lj-toast.is-leaving {
+  animation: ljPopOut 140ms var(--lj-spring) both;
+}
+
+@keyframes ljPopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes ljPopOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+}
+
+@keyframes ljRowIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ljPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lj-root *,
+  .lj-dot,
+  .lj-popover,
+  .lj-ctx-menu,
+  .lj-queue-card,
+  .lj-roster-row,
+  .lj-invite-panel,
+  .lj-toast {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,0 +1,31 @@
+services:
+  lunajam:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: lunajam
+    ports:
+      - "127.0.0.1:${LUNAJAM_PORT:-8642}:${LUNAJAM_PORT:-8642}"
+    environment:
+      LUNAJAM_PORT: ${LUNAJAM_PORT:-8642}
+      LUNAJAM_HOST: ${LUNAJAM_HOST:-0.0.0.0}
+      LUNAJAM_PUBLIC_URL: ${LUNAJAM_PUBLIC_URL:-https://lunajam.sn0w13.de}
+      LUNAJAM_MAX_PARTICIPANTS: ${LUNAJAM_MAX_PARTICIPANTS:-32}
+      LUNAJAM_HOST_GRACE_MS: ${LUNAJAM_HOST_GRACE_MS:-20000}
+      LUNAJAM_ROOM_TTL_MS: ${LUNAJAM_ROOM_TTL_MS:-900000}
+      LUNAJAM_RATE_LIMIT: ${LUNAJAM_RATE_LIMIT:-60}
+      LUNAJAM_MAX_CONNECTIONS: ${LUNAJAM_MAX_CONNECTIONS:-512}
+      LUNAJAM_IDLE_MS: ${LUNAJAM_IDLE_MS:-90000}
+      LUNAJAM_MAX_ROOMS: ${LUNAJAM_MAX_ROOMS:-256}
+      LUNAJAM_ROOMS_PER_CONN: ${LUNAJAM_ROOMS_PER_CONN:-2}
+      LUNAJAM_TLS_CERT: ${LUNAJAM_TLS_CERT:-}
+      LUNAJAM_TLS_KEY: ${LUNAJAM_TLS_KEY:-}
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 2.0
+    pids_limit: 128
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

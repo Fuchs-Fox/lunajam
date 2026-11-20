@@ -1,0 +1,43 @@
+{
+  "name": "lunajam",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsx ./esbuild.config.ts && node ./build-server.mjs",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "dev": "node devserve.mjs"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "ws": "^8.22.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/jsdom": "^30.0.0",
+    "@types/node": "^22",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.14.0",
+    "jsdom": "^31.0.1",
+    "luna": "github:inrixia/TidaLuna",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^5.1.0"
+  },
+  "description": "Native Jam sessions and Discord Listen Together for TIDAL Desktop (TidaLuna).",
+  "author": {
+    "name": "Fuchs-Fox",
+    "url": "https://github.com/Fuchs-Fox"
+  }
+}
