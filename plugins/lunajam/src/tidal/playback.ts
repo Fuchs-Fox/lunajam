@@ -54,7 +54,7 @@ export class TidalPlaybackBridge {
       if (role === 'host') {
         this.emitHostState()
       } else if (role === 'guest' && state === 'PLAYING') {
-        this.hooks.onGuestReadyToSync?.()
+        queueMicrotask(() => this.hooks.onGuestReadyToSync?.())
       }
     })
 
