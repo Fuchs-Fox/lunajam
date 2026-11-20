@@ -1,0 +1,176 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 520" width="1280" height="520" role="img" aria-label="LunaJam native TIDAL Jam rooms and Discord Listen Together banner">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="520" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#090a0e" />
+      <stop offset="55%" stop-color="#0e1017" />
+      <stop offset="100%" stop-color="#131620" />
+    </linearGradient>
+    <radialGradient id="glow" cx="930" cy="230" r="390" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2ee6d6" stop-opacity="0.16" />
+      <stop offset="55%" stop-color="#2ee6d6" stop-opacity="0.04" />
+      <stop offset="100%" stop-color="#2ee6d6" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="art1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e1b4b" />
+      <stop offset="100%" stop-color="#0d9488" />
+    </linearGradient>
+    <linearGradient id="art2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7c2d12" />
+      <stop offset="100%" stop-color="#db2777" />
+    </linearGradient>
+    <linearGradient id="art3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#312e81" />
+      <stop offset="100%" stop-color="#475569" />
+    </linearGradient>
+    <filter id="shadowLg" x="-12%" y="-12%" width="128%" height="132%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000000" flood-opacity="0.58" />
+    </filter>
+    <filter id="shadowMd" x="-15%" y="-15%" width="135%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000000" flood-opacity="0.68" />
+    </filter>
+    <clipPath id="outerClip">
+      <rect x="0" y="0" width="1280" height="520" rx="20" />
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#outerClip)" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+    <rect width="1280" height="520" fill="url(#bg)" />
+    <rect width="1280" height="520" fill="url(#glow)" />
+    <rect x="0.5" y="0.5" width="1279" height="519" rx="19.5" fill="none" stroke="rgba(255,255,255,0.08)" />
+
+    <g transform="translate(64, 72)">
+      <rect x="0" y="0" width="44" height="44" rx="11" fill="#131720" stroke="rgba(46,230,214,0.38)" />
+      <circle cx="17" cy="17" r="3.6" fill="none" stroke="#2ee6d6" stroke-width="1.8" />
+      <path d="M10.5 29c0-3.2 2.8-5.4 6.5-5.4s6.5 2.2 6.5 5.4" fill="none" stroke="#2ee6d6" stroke-width="1.8" stroke-linecap="round" />
+      <path d="M26.5 14.8a5.8 5.8 0 0 1 0 9.4" fill="none" stroke="#2ee6d6" stroke-width="1.8" stroke-linecap="round" />
+      <path d="M30.5 12a9.5 9.5 0 0 1 0 15" fill="none" stroke="#2ee6d6" stroke-width="1.8" stroke-linecap="round" opacity="0.65" />
+
+      <text x="60" y="20" fill="#2ee6d6" font-size="11.5" font-weight="600" letter-spacing="1.4">TIDALUNA PLUGIN</text>
+      <text x="60" y="37" fill="rgba(255,255,255,0.52)" font-size="12" font-weight="500">Protocol v2  ·  TIDAL Desktop</text>
+    </g>
+
+    <text x="62" y="198" fill="#ffffff" font-size="60" font-weight="700" letter-spacing="-2.2">LunaJam</text>
+
+    <text x="64" y="242" fill="rgba(255,255,255,0.78)" font-size="20" font-weight="400">
+      <tspan x="64" dy="0">Shared Jam listening rooms and Discord</tspan>
+      <tspan x="64" dy="29">Listen Together, native inside TIDAL.</tspan>
+    </text>
+
+    <g transform="translate(64, 316)">
+      <circle cx="5" cy="6" r="3.5" fill="#2ee6d6" />
+      <text x="18" y="10" fill="rgba(255,255,255,0.82)" font-size="13.5" font-weight="500">Play queue embeds with clickable track adder avatars</text>
+
+      <circle cx="5" cy="36" r="3.5" fill="#2ee6d6" />
+      <text x="18" y="40" fill="rgba(255,255,255,0.82)" font-size="13.5" font-weight="500">Per-member track add permissions, profiles, and room bans</text>
+
+      <circle cx="5" cy="66" r="3.5" fill="#2ee6d6" />
+      <text x="18" y="70" fill="rgba(255,255,255,0.82)" font-size="13.5" font-weight="500">Clock-offset drift sync across Native, Flatpak, and Vesktop RPC</text>
+    </g>
+
+    <g transform="translate(64, 424)">
+      <rect x="0" y="0" width="132" height="30" rx="8" fill="rgba(46,230,214,0.12)" stroke="rgba(46,230,214,0.34)" />
+      <text x="66" y="19" text-anchor="middle" fill="#2ee6d6" font-size="11.5" font-weight="600">This device · Sync</text>
+
+      <rect x="140" y="0" width="134" height="30" rx="8" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)" />
+      <text x="207" y="19" text-anchor="middle" fill="rgba(255,255,255,0.86)" font-size="11.5" font-weight="500">Host speaker mode</text>
+
+      <rect x="282" y="0" width="156" height="30" rx="8" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)" />
+      <text x="360" y="19" text-anchor="middle" fill="rgba(255,255,255,0.86)" font-size="11.5" font-weight="500">Discord Listen Together</text>
+    </g>
+
+    <g filter="url(#shadowLg)">
+      <rect x="614" y="28" width="386" height="350" rx="14" fill="#15171e" stroke="rgba(255,255,255,0.1)" />
+
+      <text x="634" y="60" fill="#ffffff" font-size="16" font-weight="700">Play queue</text>
+      <path d="M934 50h12M934 55h12M934 60h7" stroke="rgba(255,255,255,0.58)" stroke-width="1.6" stroke-linecap="round" />
+      <path d="M966 50l9 9M975 50l-9 9" stroke="rgba(255,255,255,0.58)" stroke-width="1.6" stroke-linecap="round" />
+
+      <rect x="630" y="76" width="354" height="132" rx="10" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.1)" />
+      <circle cx="647" cy="99" r="3.5" fill="#2ee6d6" />
+      <text x="658" y="103" fill="#ffffff" font-size="13.5" font-weight="600">Jam · 3</text>
+
+      <circle cx="726" cy="99" r="11" fill="#3b82f6" stroke="#1d1e24" stroke-width="2" />
+      <text x="726" y="103" text-anchor="middle" fill="#ffffff" font-size="10" font-weight="700">A</text>
+      <circle cx="742" cy="99" r="11" fill="#0d9488" stroke="#1d1e24" stroke-width="2" />
+      <text x="742" y="103" text-anchor="middle" fill="#ffffff" font-size="10" font-weight="700">M</text>
+      <circle cx="758" cy="99" r="11" fill="#7c3aed" stroke="#1d1e24" stroke-width="2" />
+      <text x="758" y="103" text-anchor="middle" fill="#ffffff" font-size="10" font-weight="700">K</text>
+
+      <rect x="866" y="86" width="54" height="26" rx="6" fill="rgba(255,255,255,0.09)" />
+      <text x="893" y="103" text-anchor="middle" fill="#ffffff" font-size="11.5" font-weight="600">Invite</text>
+      <rect x="926" y="86" width="44" height="26" rx="6" fill="rgba(239,68,68,0.16)" />
+      <text x="948" y="103" text-anchor="middle" fill="#fca5a5" font-size="11.5" font-weight="600">End</text>
+
+      <line x1="642" y1="122" x2="972" y2="122" stroke="rgba(255,255,255,0.09)" />
+
+      <text x="644" y="146" fill="rgba(255,255,255,0.9)" font-size="12" font-weight="500">Let others add tracks</text>
+      <rect x="936" y="132" width="34" height="19" rx="9.5" fill="#2ee6d6" />
+      <circle cx="960.5" cy="141.5" r="7" fill="#0b0c10" />
+
+      <text x="644" y="182" fill="rgba(255,255,255,0.9)" font-size="12" font-weight="500">Let others change what's playing</text>
+      <rect x="936" y="168" width="34" height="19" rx="9.5" fill="#2ee6d6" />
+      <circle cx="960.5" cy="177.5" r="7" fill="#0b0c10" />
+
+      <text x="632" y="230" fill="rgba(255,255,255,0.48)" font-size="11" font-weight="600">NOW PLAYING</text>
+
+      <rect x="630" y="240" width="354" height="52" rx="8" fill="rgba(46,230,214,0.09)" />
+      <rect x="640" y="248" width="36" height="36" rx="6" fill="url(#art1)" />
+      <text x="688" y="263" fill="#2ee6d6" font-size="13" font-weight="600">Midnight City</text>
+      <text x="688" y="279" fill="rgba(255,255,255,0.58)" font-size="11.5">M83</text>
+      <circle cx="960" cy="266" r="11.5" fill="#3b82f6" />
+      <text x="960" y="270" text-anchor="middle" fill="#ffffff" font-size="10.5" font-weight="700">A</text>
+
+      <rect x="630" y="296" width="354" height="52" rx="8" fill="rgba(255,255,255,0.03)" />
+      <rect x="640" y="304" width="36" height="36" rx="6" fill="url(#art2)" />
+      <text x="688" y="319" fill="#ffffff" font-size="13" font-weight="600">Genesis</text>
+      <text x="688" y="335" fill="rgba(255,255,255,0.58)" font-size="11.5">Justice</text>
+      <circle cx="960" cy="322" r="13.5" fill="none" stroke="rgba(255,255,255,0.78)" stroke-width="1.5" />
+      <circle cx="960" cy="322" r="11.5" fill="#0d9488" />
+      <text x="960" y="326" text-anchor="middle" fill="#ffffff" font-size="10.5" font-weight="700">M</text>
+    </g>
+
+    <g filter="url(#shadowMd)">
+      <rect x="984" y="200" width="232" height="172" rx="12" fill="#1c1e26" stroke="rgba(255,255,255,0.16)" />
+
+      <circle cx="1010" cy="224" r="12" fill="#0d9488" />
+      <text x="1010" y="228" text-anchor="middle" fill="#ffffff" font-size="10.5" font-weight="700">M</text>
+      <text x="1030" y="221" fill="#ffffff" font-size="13" font-weight="600">Mia</text>
+      <text x="1030" y="235" fill="rgba(255,255,255,0.5)" font-size="11">Guest</text>
+
+      <line x1="996" y1="246" x2="1204" y2="246" stroke="rgba(255,255,255,0.09)" />
+
+      <circle cx="1008" cy="266" r="3" fill="none" stroke="rgba(255,255,255,0.78)" stroke-width="1.4" />
+      <path d="M1002.5 274.5c0-2.3 2.3-3.6 5.5-3.6s5.5 1.3 5.5 3.6" fill="none" stroke="rgba(255,255,255,0.78)" stroke-width="1.4" stroke-linecap="round" />
+      <text x="1024" y="272" fill="rgba(255,255,255,0.92)" font-size="12.5" font-weight="500">View profile</text>
+
+      <path d="M1008 296v9M1003.5 300.5h9" stroke="rgba(255,255,255,0.78)" stroke-width="1.5" stroke-linecap="round" />
+      <text x="1024" y="305" fill="rgba(255,255,255,0.92)" font-size="12.5" font-weight="500">Can add tracks</text>
+      <rect x="1166" y="292" width="32" height="18" rx="9" fill="#2ee6d6" />
+      <circle cx="1189" cy="301" r="6.5" fill="#0b0c10" />
+
+      <line x1="996" y1="322" x2="1204" y2="322" stroke="rgba(255,255,255,0.09)" />
+
+      <rect x="994" y="329" width="212" height="32" rx="7" fill="rgba(239,68,68,0.14)" />
+      <circle cx="1008" cy="345" r="5.5" fill="none" stroke="#fca5a5" stroke-width="1.4" />
+      <line x1="1004" y1="341" x2="1012" y2="349" stroke="#fca5a5" stroke-width="1.4" />
+      <text x="1024" y="349" fill="#fca5a5" font-size="12.5" font-weight="600">Ban from Jam</text>
+    </g>
+
+    <g filter="url(#shadowMd)">
+      <rect x="532" y="354" width="302" height="138" rx="12" fill="#111214" stroke="rgba(255,255,255,0.14)" />
+      <text x="548" y="375" fill="rgba(255,255,255,0.68)" font-size="10" font-weight="700" letter-spacing="0.7">LISTENING TO TIDAL</text>
+      <circle cx="816" cy="371" r="3.5" fill="#23a55a" />
+
+      <rect x="548" y="386" width="48" height="48" rx="8" fill="url(#art1)" />
+      <text x="608" y="401" fill="#ffffff" font-size="13" font-weight="700">Midnight City</text>
+      <text x="608" y="417" fill="rgba(255,255,255,0.72)" font-size="11.5">M83</text>
+      <text x="608" y="432" fill="#2ee6d6" font-size="11" font-weight="500">Jam · 3 listening</text>
+
+      <rect x="548" y="444" width="270" height="3" rx="1.5" fill="#2e3035" />
+      <rect x="548" y="444" width="122" height="3" rx="1.5" fill="#2ee6d6" />
+
+      <rect x="548" y="455" width="270" height="26" rx="6" fill="#2b2d31" stroke="rgba(255,255,255,0.08)" />
+      <text x="683" y="472" text-anchor="middle" fill="#ffffff" font-size="11.5" font-weight="600">Listen Together</text>
+    </g>
+  </g>
+</svg>
