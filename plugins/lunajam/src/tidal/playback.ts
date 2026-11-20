@@ -48,9 +48,13 @@ export class TidalPlaybackBridge {
       }
     })
 
-    PlayState.onState(unloads, () => {
-      if (this.hooks.isActive() && this.hooks.getRole() === 'host') {
+    PlayState.onState(unloads, (state) => {
+      if (!this.hooks.isActive()) return
+      const role = this.hooks.getRole()
+      if (role === 'host') {
         this.emitHostState()
+      } else if (role === 'guest' && state === 'PLAYING') {
+        this.hooks.onGuestReadyToSync?.()
       }
     })
 
@@ -256,6 +260,11 @@ export class TidalPlaybackBridge {
       this.ownOp(() => PlayState.play())
     } else if (!playback.playing && PlayState.playing) {
       this.ownOp(() => PlayState.pause())
+    }
+
+    const rawState = (PlayState as { state?: string }).state
+    if (playback.playing && rawState !== undefined && rawState !== 'PLAYING') {
+      return
     }
 
     const finalActual = PlayState.playbackContext?.actualProductId
