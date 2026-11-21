@@ -75,7 +75,7 @@ export const LunaJamSettingsView: FC = () => {
       />
       <LunaTextSetting
         title="Discord Application ID"
-        desc={`Default: ${defaultSettings.discordClientId}`}
+        desc={`Built-in TIDAL ID (${defaultSettings.discordClientId}) works out of the box; change only for a custom Discord app`}
         value={clientDraft}
         onChange={(ev: { target: { value: string } }) => setClientDraft(ev.target.value)}
         onBlur={() => {

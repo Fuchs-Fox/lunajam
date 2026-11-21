@@ -8,7 +8,9 @@ export interface WireActivity {
   type?: number
   status_display_type?: number
   details?: string
+  details_url?: string
   state?: string
+  state_url?: string
   timestamps?: {
     start?: number
     end?: number
@@ -16,6 +18,7 @@ export interface WireActivity {
   assets?: {
     large_image?: string
     large_text?: string
+    large_url?: string
     small_image?: string
     small_text?: string
   }

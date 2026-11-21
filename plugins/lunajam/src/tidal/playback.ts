@@ -28,6 +28,7 @@ export class TidalPlaybackBridge {
       getRole: () => Role | null
       getAudioMode: () => AudioMode
       canGuestControl: () => boolean
+      getExpectedTrackId?: () => string | null
       getQueueUidForIndex: (index: number) => string | null
       getIndexForQueueUid: (uid: string) => number
       getRoomIndexForNativeIndex?: (nativeIndex: number) => number
@@ -37,14 +38,20 @@ export class TidalPlaybackBridge {
       onRestricted: () => void
     },
   ) {
-    MediaItem.onMediaTransition(unloads, () => {
+    MediaItem.onMediaTransition(unloads, (item) => {
       if (!this.hooks.isActive()) return
       const role = this.hooks.getRole()
       if (role === 'host') {
         this.emitHostState()
       } else if (role === 'guest') {
+        const expected = this.hooks.getExpectedTrackId?.()
+        const actual = String((item as { id?: unknown } | undefined)?.id ?? PlayState.playbackContext?.actualProductId ?? '')
         this.pendingLoadTrackId = null
+        this.pendingLoadAt = 0
         this.hooks.onGuestReadyToSync?.()
+        if (expected && actual && actual !== expected) {
+          queueMicrotask(() => this.hooks.onGuestReadyToSync?.())
+        }
       }
     })
 
@@ -58,7 +65,7 @@ export class TidalPlaybackBridge {
       }
     })
 
-    redux.intercept('playbackControls/SEEK', unloads, (seconds) => {
+    redux.intercept(['playbackControls/SEEK', 'playbackControls/START_AT'], unloads, (seconds) => {
       if (!this.hooks.isActive() || this.selfOps > 0) return
       const role = this.hooks.getRole()
       if (role === 'host') {
@@ -74,6 +81,44 @@ export class TidalPlaybackBridge {
         return true
       }
     })
+
+    redux.intercept(
+      ['playbackControls/SEEK_BACKWARDS', 'playbackControls/SEEK_FORWARDS', 'playbackControls/STOP'],
+      unloads,
+      (payload, actionName) => {
+        if (!this.hooks.isActive() || this.selfOps > 0) return
+        if (this.hooks.getRole() !== 'guest') return
+        if (!this.hooks.canGuestControl()) {
+          this.hooks.onRestricted()
+          return true
+        }
+        if (actionName === 'playbackControls/STOP') {
+          this.hooks.onGuestControl({ kind: 'pause' })
+          return true
+        }
+        const delta = typeof payload === 'number' && Number.isFinite(payload) ? payload : 10
+        const signed = actionName === 'playbackControls/SEEK_BACKWARDS' ? -Math.abs(delta) : Math.abs(delta)
+        const cur = PlayState.currentTime || PlayState.playTime || 0
+        this.hooks.onGuestControl({ kind: 'seek', posMs: Math.max(0, Math.round((cur + signed) * 1000)) })
+        return true
+      },
+    )
+
+    redux.intercept(
+      ['playbackControls/PREFILL_MEDIA_PRODUCT_TRANSITION', 'player/PRELOAD_ITEM'],
+      unloads,
+      (payload) => {
+        if (!this.hooks.isActive() || this.selfOps > 0) return
+        if (this.hooks.getRole() !== 'guest') return
+        if (this.hooks.getAudioMode() === 'speaker') return true
+        const p = payload as { productId?: unknown; mediaProduct?: { productId?: unknown } } | null
+        const pid = p?.mediaProduct?.productId ?? p?.productId
+        const expected = this.hooks.getExpectedTrackId?.()
+        if (expected && pid !== undefined && String(pid) !== expected) {
+          return true
+        }
+      },
+    )
 
     redux.intercept(HOST_PLAYBACK_ACTIONS, unloads, (_, actionName) => {
       if (!this.hooks.isActive() || this.selfOps > 0) return

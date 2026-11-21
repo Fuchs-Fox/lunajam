@@ -410,6 +410,13 @@ export class SessionClient {
     this.send({ v: 2, t: 'queue.meta', updates })
   }
 
+  updateProfile(profile: Profile): void {
+    if (this.intent) this.intent.profile = profile
+    if (this.state.room || this.state.standbyId) {
+      this.send({ v: 2, t: 'profile.update', profile })
+    }
+  }
+
   clearNotice(): void {
     if (this.state.error || this.state.status === 'ended') {
       this.updateState({

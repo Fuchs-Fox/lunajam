@@ -22,34 +22,36 @@ tidaluna://settings/store?installfromurl=https://github.com/Fuchs-Fox/lunajam/re
 ## Capabilities
 
 - **Play queue integration**: A Jam button sits in the footer player bar beside Lyrics and Queue. Active sessions mount directly below TIDAL's Play Queue header with stacked participant avatars, an invite QR/code drawer, and per-track contributor badges on every queue row. Track and playlist context menus also expose `Start a Jam` and `Add to Jam`.
-- **Participant controls and permissions**: The host controls room-wide `Let others add tracks` and `Let others change what's playing` switches. Clicking any listener avatar or track contributor badge opens a floating menu with `View profile` (navigates to `/user/:id` inside TIDAL), a per-listener `Can add tracks` switch, and `Ban from Jam` (removes every track that participant queued and blocks reentry until the host ends and recreates the room).
+- **Participant controls and permissions**: The host controls room-wide `Let others add tracks` and `Let others change what's playing` switches. Clicking any listener avatar or track contributor badge opens a floating menu with `View profile` (navigates to `/@handle` or `/artist/:id` inside TIDAL when the listener has a public TIDAL profile), a per-listener `Can add tracks` switch, and `Ban from Jam` (removes every track that participant queued and blocks reentry until the host ends and recreates the room).
 - **Audio modes and drift sync**: Guests switch between `This device` (local TIDAL playback synced by median-RTT clock offset and three-zone drift compensation) and `Host speaker` (local player pauses while playback controls forward directly to the host).
 - **Discord Rich Presence and Listen Together**: Broadcasts `Listening to TIDAL` activity with track artwork, album tooltip, live progress bar, and a `Listen Together` button. Clicking a solo listener's `Listen Together` link promotes their active queue into a live Jam room automatically.
 
 ## Discord RPC on Linux and Flatpak
 
-LunaJam connects directly to Discord over native IPC (`\\.\pipe\discord-ipc-*` on Windows, Unix domain sockets on Linux) before falling back to local `arRPC` WebSockets (`127.0.0.1:6463..6472`).
+LunaJam connects directly to Discord over native IPC (`\\.\pipe\discord-ipc-*` on Windows, Unix domain sockets on Linux) before falling back to local `arRPC` WebSockets (`127.0.0.1:6463..6472`). On Linux, LunaJam probes `$XDG_RUNTIME_DIR/lunajam-ipc-0..9` first before standard `discord-ipc-*` and `.flatpak` locations.
 
 - **Unboxed or native `tidal-hifi`**: Connects out of the box to native Discord, Flatpak Discord (`app/com.discordapp.Discord`), Vesktop (`.flatpak/dev.vencord.Vesktop/xdg-run` or `app/dev.vencord.Vesktop`), Equibop (`.flatpak/org.equicord.equibop/xdg-run` or `app/org.equicord.equibop`), and Snap Discord (`snap.discord`).
-- **Flatpak `tidal-hifi` (`com.mastermindzh.tidal-hifi`) + Flatpak Equibop or Vesktop**: `com.mastermindzh.tidal-hifi` only mounts `xdg-run/app/com.discordapp.Discord` by default, while Equibop and Vesktop bind their `arRPC` Unix socket inside `.flatpak/<app-id>/xdg-run/discord-ipc-0`. Note that `arRPC-Bun v1.3.4` inside current Equibop builds crashes on incoming WebSocket RPC upgrades on port `6463` (`WSServer.onConnection` recursion), so Unix IPC is required. Expose the socket cleanly with `user-tmpfiles.d`:
+- **Flatpak `tidal-hifi` (`com.mastermindzh.tidal-hifi`) + Flatpak Equibop or Vesktop**: `com.mastermindzh.tidal-hifi` only mounts `xdg-run/app/com.discordapp.Discord` by default and pre-creates `discord-ipc-0..9` symlinks inside its own persistent `.flatpak` runtime directory. Do not expose `--filesystem=xdg-run/discord-ipc-0` to `tidal-hifi`, or Bubblewrap (`bwrap`) fails at startup when overwriting the cached `discord-ipc-0` symlink. Note also that `arRPC-Bun v1.3.4` inside current Equibop builds crashes on incoming WebSocket RPC upgrades on port `6463`, so Unix IPC via a dedicated `lunajam-ipc-0` symlink is required:
 
-1. Grant `tidal-hifi` Flatpak access to the host runtime socket:
+1. If `xdg-run/discord-ipc-0` was previously overridden, reset it first so `tidal-hifi` launches cleanly:
 
 ```sh
-flatpak override --user --filesystem=xdg-run/discord-ipc-0 com.mastermindzh.tidal-hifi
+flatpak override --user --reset com.mastermindzh.tidal-hifi
+rm -f "/run/user/$(id -u)/discord-ipc-0" ~/.config/user-tmpfiles.d/discord-rpc.conf
 ```
 
-2. Symlink Equibop's (or Vesktop's) Flatpak IPC socket to `$XDG_RUNTIME_DIR/discord-ipc-0`:
+2. Symlink Equibop's (or Vesktop's) Flatpak IPC socket to `$XDG_RUNTIME_DIR/lunajam-ipc-0` and grant `tidal-hifi` access:
 
 ```sh
 mkdir -p ~/.config/user-tmpfiles.d
-echo 'L %t/discord-ipc-0 - - - - .flatpak/org.equicord.equibop/xdg-run/discord-ipc-0' > ~/.config/user-tmpfiles.d/discord-rpc.conf
+echo 'L %t/lunajam-ipc-0 - - - - .flatpak/org.equicord.equibop/xdg-run/discord-ipc-0' > ~/.config/user-tmpfiles.d/lunajam-rpc.conf
 systemctl --user enable --now systemd-tmpfiles-setup.service
+flatpak override --user --filesystem=xdg-run/lunajam-ipc-0 com.mastermindzh.tidal-hifi
 ```
 
 For `dev.vencord.Vesktop`, replace `org.equicord.equibop` with `dev.vencord.Vesktop`.
 
-3. Restart `tidal-hifi` and make sure **Settings -> Custom / Vesktop RPC -> Configure Rich Presence** has `arRPC` enabled and `Rich Presence` not disabled in Equibop.
+3. Restart `tidal-hifi`, verify **Settings -> Custom / Vesktop RPC -> Configure Rich Presence** has `arRPC` enabled in Equibop/Vesktop, and disable any separate standalone `DiscordRPC` plugin in TidaLuna so two plugins do not overwrite each other's presence.
 
 ## Settings
 
@@ -59,12 +61,12 @@ Configured inside **TIDAL Settings -> Plugins -> LunaJam**:
 | --- | --- | --- |
 | Discord Rich Presence | Enable or disable presence updates on Discord, Vesktop, and Equibop | `true` |
 | Listen Together button in Discord | Attach a join button during Jams and solo listening | `true` |
-| Show paused tracks in Discord | Keep activity visible while playback is paused | `false` |
+| Show paused tracks in Discord | Keep activity visible while playback is paused | `true` |
 | Allow guests to add tracks by default | Initial state of `Let others add tracks` | `true` |
 | Allow guests to control playback by default | Initial state of `Let others change what's playing` | `true` |
 | Default join audio mode | Start in `This device` or `Host speaker` when joining | `This device` (`remote`) |
 | Relay server URL | HTTP/WebSocket origin for rooms and `/join/:token` links | `https://lunajam.sn0w13.de` |
-| Discord Application ID | Custom Discord client ID (`17..22` digits) | `1130698654987067493` |
+| Discord Application ID | Built-in TIDAL application ID; leave as `1130698654987067493` unless using a custom Discord Developer Portal app | `1130698654987067493` |
 
 ## Self-Hosting the Relay
 

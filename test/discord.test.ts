@@ -6,7 +6,11 @@ import * as path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { WebSocketServer } from 'ws'
 import { drainLoopbackJoins, startLoopback, stopLoopback } from '../plugins/lunajam/src/discord/loopback.native'
+import { buildPresenceActivity } from '../plugins/lunajam/src/discord/presence'
 import { candidateSockets, rpcDisconnect, rpcSetActivity } from '../plugins/lunajam/src/discord/rpc.native'
+import type { SessionState } from '../plugins/lunajam/src/session/client'
+import { DEFAULT_DISCORD_CLIENT_ID } from '../plugins/lunajam/src/session/settings'
+import { resetLunaMock, redux, setFakePlaybackContext } from './helpers/lunaMock'
 
 function encodeIpc(op: number, data: unknown): Buffer {
   const body = Buffer.from(JSON.stringify(data), 'utf8')
@@ -158,6 +162,8 @@ describe('Discord native RPC & loopback bridge', () => {
     process.env.XDG_RUNTIME_DIR = '/run/user/1001'
     try {
       const candidates = candidateSockets()
+      expect(candidates[0]).toBe('/run/user/1001/lunajam-ipc-0')
+      expect(candidates.indexOf('/run/user/1001/lunajam-ipc-0')).toBeLessThan(candidates.indexOf('/run/user/1001/discord-ipc-0'))
       expect(candidates).toContain('/run/user/1001/.flatpak/org.equicord.equibop/xdg-run/discord-ipc-0')
       expect(candidates).toContain('/run/user/1001/.flatpak/dev.vencord.Vesktop/xdg-run/discord-ipc-0')
       expect(candidates).toContain('/run/user/1001/discord-ipc-0')
@@ -165,5 +171,53 @@ describe('Discord native RPC & loopback bridge', () => {
       if (prev === undefined) delete process.env.XDG_RUNTIME_DIR
       else process.env.XDG_RUNTIME_DIR = prev
     }
+  })
+
+  it('builds playing and paused Discord activities with album hover text, instance buttons, and pause mini-icon', async () => {
+    resetLunaMock()
+    setFakePlaybackContext('555101', 12)
+    redux.actions['playbackControls/PLAY']()
+
+    const baseState: SessionState = {
+      status: 'idle',
+      role: null,
+      cid: null,
+      standbyId: 's_testroom1',
+      room: null,
+      audioMode: 'remote',
+      endReason: null,
+      error: null,
+      serverUrl: 'https://lunajam.sn0w13.de',
+    }
+
+    const playingAct = await buildPresenceActivity({
+      state: baseState,
+      listenTogether: true,
+      showPaused: true,
+      clientId: DEFAULT_DISCORD_CLIENT_ID,
+    })
+    expect(playingAct).not.toBeNull()
+    expect(playingAct!.instance).toBe(true)
+    expect(playingAct!.assets?.large_text).toBe('Album')
+    expect(playingAct!.assets?.small_image).toBeUndefined()
+    expect(playingAct!.timestamps?.end).toBeGreaterThan(playingAct!.timestamps!.start!)
+    expect(playingAct!.buttons).toEqual([
+      { label: 'Listen Together', url: 'https://lunajam.sn0w13.de/join/s_testroom1' },
+      { label: 'Play on TIDAL', url: 'https://tidal.com/browse/track/555101' },
+    ])
+
+    redux.actions['playbackControls/PAUSE']()
+    const pausedAct = await buildPresenceActivity({
+      state: baseState,
+      listenTogether: true,
+      showPaused: true,
+      clientId: DEFAULT_DISCORD_CLIENT_ID,
+    })
+    expect(pausedAct).not.toBeNull()
+    expect(pausedAct!.instance).toBe(true)
+    expect(pausedAct!.assets?.large_text).toBe('Album')
+    expect(pausedAct!.assets?.small_image).toBe('paused-icon')
+    expect(pausedAct!.assets?.small_text).toBe('Paused')
+    expect(pausedAct!.timestamps).toBeUndefined()
   })
 })

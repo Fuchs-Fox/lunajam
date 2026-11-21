@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { RoomSnapshot } from '../plugins/lunajam/src/protocol'
 import { ClockSync } from '../plugins/lunajam/src/sync/clock'
 import { SessionClient } from '../plugins/lunajam/src/session/client'
+import { hydrateLocalIdentity, localProfile } from '../plugins/lunajam/src/tidal/identity'
 import { TidalPlaybackBridge } from '../plugins/lunajam/src/tidal/playback'
 import { TidalQueueSync } from '../plugins/lunajam/src/tidal/queueSync'
 import { FooterButtonMount } from '../plugins/lunajam/src/ui/footerButton'
@@ -264,7 +265,7 @@ describe('Native TIDAL UI integration', () => {
       allowGuestAdd: true,
       participants: [
         { cid: 'c1', name: 'Alex', avatarUrl: null, tidalUserId: '424242', role: 'host', audioMode: 'remote', canAddTracks: true },
-        { cid: 'c2', name: 'Mia', avatarUrl: null, tidalUserId: '987654', role: 'guest', audioMode: 'remote', canAddTracks: true },
+        { cid: 'c2', name: 'Mia', avatarUrl: null, tidalUserId: '987654', profilePath: '/@mia', role: 'guest', audioMode: 'remote', canAddTracks: true },
       ],
       queue: [
         {
@@ -279,7 +280,7 @@ describe('Native TIDAL UI integration', () => {
           trackId: '202',
           title: 'Genesis',
           artist: 'Justice',
-          addedBy: { cid: 'c2', name: 'Mia', avatarUrl: null, tidalUserId: '987654' },
+          addedBy: { cid: 'c2', name: 'Mia', avatarUrl: null, tidalUserId: '987654', profilePath: '/@mia' },
         },
       ],
       currentIndex: 0,
@@ -300,6 +301,16 @@ describe('Native TIDAL UI integration', () => {
 
     expect(document.querySelector('._utilityButtons_4d7aaf9 [data-test="lunajam-footer-btn"]')).not.toBeNull()
     expect(document.querySelector('[data-test="playqueue-header"] + .lj-queue-mount')).not.toBeNull()
+
+    const row0 = document.getElementById('row-0')!
+    const badge0 = row0.querySelector<HTMLButtonElement>('.lj-track-avatar')
+    expect(badge0).not.toBeNull()
+    badge0!.click()
+    await flushReact()
+    const disabledProfileBtn = [...document.querySelectorAll<HTMLButtonElement>('.lj-ctx-item')].find((b) =>
+      b.textContent?.includes('View profile'),
+    )
+    expect(disabledProfileBtn?.disabled).toBe(true)
 
     const badge1 = row1.querySelector<HTMLButtonElement>('.lj-track-avatar')
     expect(badge1).not.toBeNull()
@@ -326,16 +337,13 @@ describe('Native TIDAL UI integration', () => {
       b.textContent?.includes('View profile'),
     )
     expect(profileBtn).toBeDefined()
+    expect(profileBtn!.disabled).toBe(false)
     profileBtn!.click()
     await flushReact()
 
     expect(getDispatched()).toContainEqual({
-      type: 'userProfiles/FETCH_USER_PROFILE',
-      payload: { userId: 987654 },
-    })
-    expect(getDispatched()).toContainEqual({
       type: 'router/PUSH',
-      payload: { pathname: '/user/987654', search: '', replace: false },
+      payload: { pathname: '/@mia', search: '', replace: false },
     })
 
     for (const unload of unloads) unload()
@@ -416,5 +424,122 @@ describe('Native TIDAL UI integration', () => {
 
     for (const unload of unloads) unload()
     session.dispose()
+  })
+
+  it('blocks cloudQueue, tracklist play, and playback seek actions on restricted guest', async () => {
+    const unloads = new Set<() => void>()
+    const session = new SessionClient()
+    const room: RoomSnapshot = {
+      code: 'R3S7R1CT',
+      hostCid: 'c1',
+      allowGuestControl: false,
+      allowGuestAdd: false,
+      participants: [
+        { cid: 'c1', name: 'Host', avatarUrl: null, role: 'host', audioMode: 'remote', canAddTracks: true },
+        { cid: 'c2', name: 'Guest', avatarUrl: null, role: 'guest', audioMode: 'remote', canAddTracks: false },
+      ],
+      queue: [
+        { uid: 'u1', trackId: '101', title: 'Track 1', artist: 'Artist A', addedBy: { cid: 'c1', name: 'Host', avatarUrl: null } },
+      ],
+      currentIndex: 0,
+      playback: { trackId: '101', queueUid: 'u1', posMs: 4000, serverTs: Date.now(), playing: true },
+    }
+    ;(session as unknown as { updateState: (p: unknown) => void }).updateState({
+      status: 'connected',
+      role: 'guest',
+      cid: 'c2',
+      room,
+      audioMode: 'remote',
+    })
+
+    let restrictedCount = 0
+    let addRestrictedCount = 0
+    let playRestrictedCount = 0
+
+    const queueSync = new TidalQueueSync(unloads, {
+      isActive: () => Boolean(session.snapshot().room),
+      getRole: () => session.snapshot().role,
+      canGuestEdit: () => Boolean(session.snapshot().room?.allowGuestControl),
+      canGuestAdd: () => false,
+      getLocalProfile: () => ({ cid: 'c2', name: 'Guest', avatarUrl: null }),
+      getRoom: () => session.snapshot().room,
+      onGuestAdd: () => {},
+      onGuestMove: () => {},
+      onGuestRemove: () => {},
+      onHostReplaceQueue: () => {},
+      onStartJamWithTracks: () => {},
+      onRestricted: () => {
+        restrictedCount += 1
+      },
+      onAddRestricted: () => {
+        addRestrictedCount += 1
+      },
+    })
+
+    new TidalPlaybackBridge(unloads, {
+      isActive: () => Boolean(session.snapshot().room),
+      getRole: () => session.snapshot().role,
+      getAudioMode: () => session.snapshot().audioMode,
+      canGuestControl: () => Boolean(session.snapshot().room?.allowGuestControl),
+      getExpectedTrackId: () => session.snapshot().room?.playback?.trackId ?? null,
+      getQueueUidForIndex: (i) => queueSync.roomUidAtNativeIndex(i),
+      getIndexForQueueUid: (uid) => queueSync.nativeIndexForRoomUid(uid),
+      onHostBroadcast: () => {},
+      onGuestControl: () => {},
+      onRestricted: () => {
+        playRestrictedCount += 1
+      },
+    })
+
+    const { redux } = await import('./helpers/lunaMock')
+    redux.actions['playQueue/FETCH_FIRST_PAGE_AND_ADD_TO_QUEUE']({ mediaItemIds: ['999'] })
+    redux.actions['cloudQueue/CREATE_CLOUD_QUEUE']({ itemIds: ['999'], autoplay: true })
+    redux.actions['content/FETCH_AND_PLAY_MEDIA_ITEM']({ itemId: '999' })
+    redux.actions['cloudQueue/ADD_ITEMS_TO_CLOUD_QUEUE']({ itemIds: ['999'] })
+    redux.actions['playbackControls/START_AT'](12)
+
+    expect(getDispatched()).toEqual([])
+    expect(restrictedCount).toBe(3)
+    expect(addRestrictedCount).toBe(1)
+    expect(playRestrictedCount).toBe(1)
+
+    for (const unload of unloads) unload()
+    session.dispose()
+  })
+
+  it('hydrates profilePath and avatarUrl from OpenAPI v2 artist endpoint and header DOM', async () => {
+    const { TidalApi, redux } = await import('./helpers/lunaMock')
+    const state = redux.store.getState() as { user: { meta: Record<string, unknown> } }
+    const origMeta = { ...state.user.meta }
+    const origFetch = TidalApi.fetch
+    state.user.meta.id = 777111
+    state.user.meta.artistId = 333444
+    state.user.meta.picture = null
+
+    document.body.innerHTML = `<div class="_profilePicture_abc"><img src="https://cdn.example.com/dom-avatar.png" /></div>`
+    TidalApi.fetch = async () =>
+      ({
+        data: { id: '333444', attributes: { name: 'Fuchs Fox', handle: 'fuchsfox' } },
+        included: [
+          {
+            type: 'artworks',
+            attributes: {
+              files: [{ href: 'https://resources.tidal.com/images/artist-v2/320x320.jpg', meta: { width: 320, height: 320 } }],
+            },
+          },
+        ],
+      }) as never
+
+    try {
+      const profile = await hydrateLocalIdentity()
+      expect(profile.tidalUserId).toBe('777111')
+      expect(profile.profilePath).toBe('/@fuchsfox')
+      expect(profile.avatarUrl).toBe('https://cdn.example.com/dom-avatar.png')
+      document.body.innerHTML = ''
+      expect(localProfile('c1').avatarUrl).toBe('https://resources.tidal.com/images/artist-v2/320x320.jpg')
+    } finally {
+      Object.assign(state.user.meta, origMeta)
+      TidalApi.fetch = origFetch
+    }
   })
 })

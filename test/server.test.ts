@@ -464,4 +464,58 @@ describe('relay server v2', () => {
     const joined = await host.next((m) => m.t === 'room.joined')
     expect(joined.t === 'room.joined' && joined.state.queue.length).toBe(150)
   })
+
+  it('updates participant avatar and profilePath via profile.update across participants and queue items', async () => {
+    const srv = await boot()
+    const host = await connectClient(srv.port)
+    const guest = await connectClient(srv.port)
+    closers.push(() => host.close(), () => guest.close())
+
+    await Promise.all([host.next((m) => m.t === 'welcome'), guest.next((m) => m.t === 'welcome')])
+
+    host.send({
+      v: 2,
+      t: 'room.create',
+      profile: { cid: '', name: 'Alex', avatarUrl: null, tidalUserId: '424242' },
+      allowGuestControl: true,
+      allowGuestAdd: true,
+      queue: [{ uid: 'h1', trackId: '101', title: 'Track', artist: 'Artist', addedBy: { cid: '', name: 'Alex', avatarUrl: null } }],
+      currentIndex: 0,
+      playback: { trackId: '101', queueUid: 'h1', posMs: 0, playing: true },
+    })
+    const created = await host.next((m) => m.t === 'room.joined')
+    if (created.t !== 'room.joined') throw new Error('expected created')
+
+    guest.send({
+      v: 2,
+      t: 'room.join',
+      code: created.state.code,
+      profile: { cid: '', name: 'Mia', avatarUrl: null, tidalUserId: '987654' },
+      audioMode: 'remote',
+    })
+    await guest.next((m) => m.t === 'room.joined')
+
+    host.send({
+      v: 2,
+      t: 'profile.update',
+      profile: {
+        cid: '',
+        name: 'Alex',
+        avatarUrl: 'https://resources.tidal.com/images/alex-v2.jpg',
+        tidalUserId: '424242',
+        profilePath: '/@alex',
+      },
+    })
+
+    const updated = await guest.next(
+      (m) =>
+        m.t === 'room.state' &&
+        m.state.participants.some((p) => p.name === 'Alex' && p.profilePath === '/@alex'),
+    )
+    if (updated.t !== 'room.state') throw new Error('expected updated state')
+    const alex = updated.state.participants.find((p) => p.name === 'Alex')
+    expect(alex?.avatarUrl).toBe('https://resources.tidal.com/images/alex-v2.jpg')
+    expect(updated.state.queue[0]!.addedBy.profilePath).toBe('/@alex')
+    expect(updated.state.queue[0]!.addedBy.avatarUrl).toBe('https://resources.tidal.com/images/alex-v2.jpg')
+  })
 })

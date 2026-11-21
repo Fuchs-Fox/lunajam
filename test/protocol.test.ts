@@ -105,7 +105,7 @@ describe('protocol v2', () => {
       v: 2,
       t: 'room.join',
       code: 'K7M4P9Q2',
-      profile: { cid: '', name: 'Mia', avatarUrl: null, tidalUserId: '987654' },
+      profile: { cid: '', name: 'Mia', avatarUrl: null, tidalUserId: '987654', profilePath: '/@mia' },
       audioMode: 'remote',
       peerId: 'p_mia_12345678',
     })
@@ -113,9 +113,20 @@ describe('protocol v2', () => {
       v: 2,
       t: 'room.join',
       code: 'K7M4P9Q2',
-      profile: { cid: '', name: 'Mia', avatarUrl: null, tidalUserId: '987654' },
+      profile: { cid: '', name: 'Mia', avatarUrl: null, tidalUserId: '987654', profilePath: '/@mia' },
       audioMode: 'remote',
       peerId: 'p_mia_12345678',
+    })
+
+    const profileUpdate = encode({
+      v: 2,
+      t: 'profile.update',
+      profile: { cid: 'c2', name: 'Mia', avatarUrl: 'https://resources.tidal.com/images/mia.jpg', profilePath: '/artist/987654' },
+    })
+    expect(decodeClient(profileUpdate)).toEqual({
+      v: 2,
+      t: 'profile.update',
+      profile: { cid: 'c2', name: 'Mia', avatarUrl: 'https://resources.tidal.com/images/mia.jpg', profilePath: '/artist/987654' },
     })
 
     expect(decodeServer(encode({ v: 2, t: 'room.ended', reason: 'banned' }))).toEqual({

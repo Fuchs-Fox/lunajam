@@ -4,7 +4,7 @@ import styles from 'file://ui/styles.css?minify'
 import { DiscordPresenceController } from './discord/presence'
 import type { AudioMode, RoomSnapshot } from './protocol'
 import { SessionClient } from './session/client'
-import { localProfile } from './tidal/identity'
+import { hydrateLocalIdentity, localProfile } from './tidal/identity'
 import { ensureQueueInStore, findMissingMetadata } from './tidal/metadata'
 import { TidalPlaybackBridge } from './tidal/playback'
 import { TidalQueueSync } from './tidal/queueSync'
@@ -33,7 +33,25 @@ function queueKey(room: RoomSnapshot): string {
   return `${room.currentIndex}:${room.queue.map((t) => `${t.uid}:${t.trackId}`).join(',')}`
 }
 
+function waitIdentityBudget(): Promise<unknown> {
+  return Promise.race([hydrateLocalIdentity(), new Promise<void>((resolve) => setTimeout(resolve, 800))])
+}
+
+let lastSentProfileKey = ''
+
+async function syncIdentityToSession(): Promise<void> {
+  await hydrateLocalIdentity()
+  const snap = session.snapshot()
+  if (!snap.room && !snap.standbyId) return
+  const profile = localProfile(snap.cid ?? '')
+  const key = `${profile.name}|${profile.avatarUrl ?? ''}|${profile.tidalUserId ?? ''}|${profile.profilePath ?? ''}`
+  if (key === lastSentProfileKey) return
+  lastSentProfileKey = key
+  session.updateProfile(profile)
+}
+
 async function startJam(seedTrackIds?: string[]): Promise<void> {
+  await waitIdentityBudget()
   const cfg = storage.get()
   const profile = localProfile(session.snapshot().cid ?? '')
   const seed = await queueSync.snapshotSeedQueue(profile)
@@ -72,6 +90,7 @@ async function startJam(seedTrackIds?: string[]): Promise<void> {
 }
 
 async function joinJam(input: string, audioMode: AudioMode, serverUrl?: string): Promise<void> {
+  await waitIdentityBudget()
   const cfg = storage.get()
   const ok = await session.joinRoom({
     input,
@@ -120,6 +139,7 @@ const playback = new TidalPlaybackBridge(unloads, {
   getRole: () => session.snapshot().role,
   getAudioMode: () => session.snapshot().audioMode,
   canGuestControl: () => Boolean(session.snapshot().room?.allowGuestControl),
+  getExpectedTrackId: () => session.snapshot().room?.playback?.trackId ?? null,
   getQueueUidForIndex: (index) => queueSync.roomUidAtNativeIndex(index),
   getIndexForQueueUid: (uid) => queueSync.nativeIndexForRoomUid(uid),
   getRoomIndexForNativeIndex: (index) => queueSync.roomIndexForNativeIndex(index),
@@ -263,7 +283,16 @@ unloads.add(
   }),
 )
 
+const t1 = setTimeout(() => {
+  syncIdentityToSession().catch(() => {})
+}, 300)
+const t2 = setTimeout(() => {
+  syncIdentityToSession().catch(() => {})
+}, 2500)
+
 unloads.add(() => {
+  clearTimeout(t1)
+  clearTimeout(t2)
   popover.unmount()
   unmountParticipantMenu()
   unmountToast()

@@ -76,8 +76,12 @@ export async function resolveTrackMeta(trackId: string): Promise<TrackMetaUpdate
       const namesFromResolved = resolvedArtists.map((a) => a?.name).filter((n): n is string => Boolean(n))
       const namesFromRaw = (tidalItem?.artists ?? []).map((a) => a?.name).filter((n): n is string => Boolean(n))
       const artist = (namesFromResolved.length > 0 ? namesFromResolved : namesFromRaw).join(', ')
-      const albumObj = await item.album().catch(() => undefined)
-      const albumTitle = albumObj ? await albumObj.title().catch(() => tidalItem?.album?.title) : tidalItem?.album?.title
+      const directAlbum = tidalItem?.album?.title?.trim()
+      const albumObj = directAlbum ? undefined : await item.album().catch(() => undefined)
+      const albumTitle =
+        directAlbum ||
+        (albumObj as { tidalAlbum?: { title?: string } } | undefined)?.tidalAlbum?.title?.trim() ||
+        (albumObj ? await albumObj.title().catch(() => undefined) : undefined)
       const coverUrl =
         (await item.coverUrl({ res: '320' }).catch(() => undefined)) ??
         (tidalItem?.album?.cover
@@ -121,7 +125,7 @@ export async function buildQueueInputs(trackIds: string[]): Promise<QueueTrackIn
 }
 
 export async function findMissingMetadata(queue: QueueTrack[], attempted: Set<string>): Promise<TrackMetaUpdate[]> {
-  const missing = queue.filter((t) => (!t.title || !t.artist || !t.coverUrl) && !attempted.has(t.trackId))
+  const missing = queue.filter((t) => (!t.title || !t.artist || !t.album || !t.coverUrl) && !attempted.has(t.trackId))
   if (missing.length === 0) return []
   const uniqueIds = [...new Set(missing.map((t) => t.trackId))].slice(0, 12)
   for (const id of uniqueIds) attempted.add(id)

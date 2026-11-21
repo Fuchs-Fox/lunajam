@@ -3,12 +3,17 @@ import type { ReactNode } from 'react'
 type InterceptFn = (payload: unknown, type: string) => unknown
 
 const storeState = {
+  session: {
+    countryCode: 'US',
+  },
   user: {
     meta: {
       id: 424242,
+      artistId: undefined as number | undefined,
       profileName: 'Alex',
       username: 'alex',
       picture: 'aa-bb-cc-dd',
+      countryCode: 'US',
     },
   },
   playQueue: {
@@ -226,7 +231,8 @@ export const MediaItem = {
     }
   },
   async fromPlaybackContext() {
-    return undefined
+    const id = storeState.playbackControls.playbackContext.actualProductId
+    return id ? this.fromId(id) : undefined
   },
   onMediaTransition(_unloads: Set<() => void>, cb: (item: unknown) => void) {
     transitionListeners.add(cb)
@@ -248,6 +254,15 @@ export const ContextMenu = {
 
 export const ipcRenderer = {
   onOpenUrl() {},
+}
+
+export const TidalApi = {
+  async getAuthHeaders() {
+    return {}
+  },
+  async fetch() {
+    return undefined
+  },
 }
 
 export const LunaSettings = ({ children }: { children?: ReactNode }) => children ?? null

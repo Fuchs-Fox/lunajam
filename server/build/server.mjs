@@ -3801,6 +3801,7 @@ function int(x, min = 0, max = 1e4) {
   return typeof x === "number" && Number.isInteger(x) && x >= min && x <= max ? x : null;
 }
 var TIDAL_USER_RE = /^\d{1,20}$/;
+var PROFILE_PATH_RE = /^\/(?:@[A-Za-z0-9._-]{1,64}|artist\/\d{1,20})$/;
 var PEER_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 function parseProfile(x) {
   if (!isObj(x)) return null;
@@ -3808,11 +3809,14 @@ function parseProfile(x) {
   const cid = typeof x.cid === "string" && x.cid.length <= 64 ? x.cid : "";
   const rawUid = typeof x.tidalUserId === "string" ? x.tidalUserId.trim() : "";
   const tidalUserId = TIDAL_USER_RE.test(rawUid) ? rawUid : void 0;
+  const rawPath = typeof x.profilePath === "string" ? x.profilePath.trim() : "";
+  const profilePath = PROFILE_PATH_RE.test(rawPath) ? rawPath : void 0;
   return {
     cid,
     name,
     avatarUrl: safeImageUrl(x.avatarUrl),
-    ...tidalUserId ? { tidalUserId } : {}
+    ...tidalUserId ? { tidalUserId } : {},
+    ...profilePath ? { profilePath } : {}
   };
 }
 function parseQueueInput(x) {
@@ -4026,6 +4030,10 @@ function decodeClient(raw) {
         ...currentIndex !== void 0 ? { currentIndex } : {},
         ...playback !== void 0 ? { playback } : {}
       };
+    }
+    case "profile.update": {
+      const profile = parseProfile(obj.profile);
+      return profile ? { v: 2, t: "profile.update", profile } : null;
     }
     default:
       return null;
@@ -4398,7 +4406,8 @@ function toProfile(p, cid = p.cid) {
     cid,
     name: p.name,
     avatarUrl: p.avatarUrl,
-    ...p.tidalUserId ? { tidalUserId: p.tidalUserId } : {}
+    ...p.tidalUserId ? { tidalUserId: p.tidalUserId } : {},
+    ...p.profilePath ? { profilePath: p.profilePath } : {}
   };
 }
 function toRoomSnapshot(room, includeToken = false) {
@@ -4501,6 +4510,9 @@ var Rooms = class {
         return;
       case "standby.close":
         this.closeStandby(cid);
+        return;
+      case "profile.update":
+        this.handleProfileUpdate(cid, msg.profile);
         return;
     }
   }
@@ -5031,7 +5043,7 @@ var Rooms = class {
     const standby = {
       id,
       cid,
-      profile: { ...msg.profile, cid },
+      profile: toProfile(msg.profile, cid),
       queue: msg.queue.slice(0, MAX_QUEUE_TRACKS),
       currentIndex: msg.currentIndex,
       playback: withServerTs(msg.playback, this.hub.now()),
@@ -5058,6 +5070,37 @@ var Rooms = class {
     if (!id) return;
     this.connStandby.delete(cid);
     this.standbys.delete(id);
+  }
+  handleProfileUpdate(cid, rawProfile) {
+    const next = toProfile(rawProfile, cid);
+    const standbyId = this.connStandby.get(cid);
+    if (standbyId) {
+      const standby = this.standbys.get(standbyId);
+      if (standby) standby.profile = next;
+    }
+    const room = this.memberRoom(cid);
+    if (!room) return;
+    const participant = room.participants.get(cid);
+    if (!participant) return;
+    if (participant.role === "guest" && next.tidalUserId && room.bannedTidalUserIds.has(next.tidalUserId)) {
+      this.banFromRoom(room, cid, participant);
+      this.hub.send(cid, { v: 2, t: "room.ended", reason: "banned" });
+      this.broadcastState(room);
+      return;
+    }
+    const changed = participant.name !== next.name || participant.avatarUrl !== next.avatarUrl || participant.tidalUserId !== next.tidalUserId || participant.profilePath !== next.profilePath;
+    if (!changed) return;
+    room.participants.set(cid, {
+      ...next,
+      role: participant.role,
+      audioMode: participant.audioMode,
+      canAddTracks: participant.canAddTracks
+    });
+    for (const item of room.queue) {
+      if (item.addedBy.cid === cid) item.addedBy = next;
+    }
+    room.lastActivity = Date.now();
+    this.broadcastState(room);
   }
   hostRoom(cid) {
     const code = this.connRoom.get(cid);

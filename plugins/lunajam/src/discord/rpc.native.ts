@@ -75,6 +75,11 @@ export function candidateSockets(): string[] {
 
   const out: string[] = []
   for (const base of bases) {
+    for (let i = 0; i < 10; i++) {
+      out.push(path.join(base, `lunajam-ipc-${i}`))
+    }
+  }
+  for (const base of bases) {
     for (const sub of subdirs) {
       const dir = sub ? path.join(base, sub) : base
       for (let i = 0; i < 10; i++) {

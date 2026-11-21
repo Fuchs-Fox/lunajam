@@ -34,7 +34,7 @@ export const defaultSettings: LunaJamSettings = {
   defaultGuestAudioMode: 'remote',
   discordRpcEnabled: true,
   discordListenTogether: true,
-  discordShowPaused: false,
+  discordShowPaused: true,
   discordClientId: DEFAULT_DISCORD_CLIENT_ID,
   peerId: generatePeerId(),
 }

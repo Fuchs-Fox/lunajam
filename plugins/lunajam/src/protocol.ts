@@ -12,6 +12,7 @@ export interface Profile {
   name: string
   avatarUrl: string | null
   tidalUserId?: string
+  profilePath?: string
 }
 
 export interface Participant extends Profile {
@@ -123,6 +124,7 @@ export type ClientMsg =
       playback?: PlaybackInput | null
     }
   | { v: 2; t: 'standby.close' }
+  | { v: 2; t: 'profile.update'; profile: Profile }
 
 export type ServerMsg =
   | { v: 2; t: 'welcome'; cid: string; serverTs: number }
@@ -262,6 +264,7 @@ function int(x: unknown, min = 0, max = 10000): number | null {
 }
 
 const TIDAL_USER_RE = /^\d{1,20}$/
+const PROFILE_PATH_RE = /^\/(?:@[A-Za-z0-9._-]{1,64}|artist\/\d{1,20})$/
 const PEER_ID_RE = /^[A-Za-z0-9_-]{8,64}$/
 
 function parseProfile(x: unknown): Profile | null {
@@ -270,11 +273,14 @@ function parseProfile(x: unknown): Profile | null {
   const cid = typeof x.cid === 'string' && x.cid.length <= 64 ? x.cid : ''
   const rawUid = typeof x.tidalUserId === 'string' ? x.tidalUserId.trim() : ''
   const tidalUserId = TIDAL_USER_RE.test(rawUid) ? rawUid : undefined
+  const rawPath = typeof x.profilePath === 'string' ? x.profilePath.trim() : ''
+  const profilePath = PROFILE_PATH_RE.test(rawPath) ? rawPath : undefined
   return {
     cid,
     name,
     avatarUrl: safeImageUrl(x.avatarUrl),
     ...(tidalUserId ? { tidalUserId } : {}),
+    ...(profilePath ? { profilePath } : {}),
   }
 }
 
@@ -553,6 +559,10 @@ export function decodeClient(raw: string): ClientMsg | null {
         ...(currentIndex !== undefined ? { currentIndex } : {}),
         ...(playback !== undefined ? { playback } : {}),
       }
+    }
+    case 'profile.update': {
+      const profile = parseProfile(obj.profile)
+      return profile ? { v: 2, t: 'profile.update', profile } : null
     }
     default:
       return null

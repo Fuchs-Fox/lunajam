@@ -32,13 +32,14 @@ const ParticipantMenuView: FC<{
         ...target,
         ...participant,
         tidalUserId: participant.tidalUserId ?? target.tidalUserId,
+        profilePath: participant.profilePath ?? target.profilePath,
       }
     : target
 
   const isSelf = effectiveProfile.cid === state.cid
   const isHost = state.role === 'host'
   const isGuestMember = Boolean(participant && participant.role === 'guest')
-  const hasTidalProfile = Boolean(effectiveProfile.tidalUserId)
+  const hasTidalProfile = Boolean(effectiveProfile.profilePath)
 
   const subtitle = !participant
     ? 'Left Jam'
@@ -73,10 +74,10 @@ const ParticipantMenuView: FC<{
         role="menuitem"
         className="lj-ctx-item"
         disabled={!hasTidalProfile}
-        title={hasTidalProfile ? 'Open TIDAL profile' : 'TIDAL profile unavailable'}
+        title={hasTidalProfile ? 'Open TIDAL profile' : 'No public TIDAL profile'}
         onClick={() => {
-          if (!effectiveProfile.tidalUserId) return
-          openTidalProfile(effectiveProfile.tidalUserId)
+          if (!effectiveProfile.profilePath) return
+          openTidalProfile(effectiveProfile.profilePath)
           onClose()
         }}
       >

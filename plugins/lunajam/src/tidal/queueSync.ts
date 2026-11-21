@@ -4,6 +4,11 @@ import type { InsertPosition, Profile, QueueTrack, QueueTrackInput, QueueTrackRe
 import { buildQueueInputs, getCachedMeta, toNativeItemId } from './metadata'
 
 const QUEUE_MUTATION_ACTIONS: redux.ActionType[] = [
+  'content/FETCH_AND_PLAY_MEDIA_ITEM',
+  'homepage/PLAY_SINGLE_TRACK',
+  'homepage/LOAD_AND_ENQUEUE_ALL_VIEW_ALL_TRACKS',
+  'mix/PLAY_MIX',
+  'trackPrompts/PLAY_MY_PICKS_ITEM',
   'playQueue/ADD_NEXT',
   'playQueue/ADD_AT_INDEX',
   'playQueue/ADD_LAST',
@@ -12,14 +17,65 @@ const QUEUE_MUTATION_ACTIONS: redux.ActionType[] = [
   'playQueue/ADD_TRACK_LIST_TO_PLAY_QUEUE',
   'playQueue/ADD_ALREADY_LOADED_ITEMS_TO_QUEUE',
   'playQueue/ADD_MEDIA_ITEMS_TO_QUEUE',
+  'playQueue/ADD_PROMO_ITEM_TO_QUEUE',
+  'playQueue/PLAY_SOUNDTRACK_PROMPT_TRACK',
+  'playQueue/FETCH_FIRST_PAGE_AND_ADD_TO_QUEUE',
+  'playQueue/FETCH_REST_OF_THE_TRACKS_AND_ADD_TO_QUEUE',
   'playQueue/ADD_SHUFFLED_REST_OF_TRACK_LIST' as redux.ActionType,
   'playQueue/LOAD_TRACK_LIST_AND_ADD_TO_PLAY_QUEUE' as redux.ActionType,
   'playQueue/RESET',
+  'playQueue/SET_CURRENT_INDEX',
+  'playQueue/CLONE_TRACK',
   'playQueue/MOVE_TRACK',
   'playQueue/REMOVE_AT_INDEX',
   'playQueue/REMOVE_ELEMENT',
   'playQueue/CLEAR_QUEUE',
+  'playQueue/CLEAR_ACTIVE_ITEMS',
+  'playQueue/ENABLE_SHUFFLE_MODE',
+  'playQueue/ENABLE_SHUFFLE_MODE_AND_SHUFFLE_ITEMS',
+  'playQueue/TOGGLE_SHUFFLE',
+  'playQueue/SET_REPEAT_MODE',
+  'playQueue/TOGGLE_REPEAT_MODE',
+  'cloudQueue/CREATE_CLOUD_QUEUE',
+  'cloudQueue/ADD_ITEMS_TO_CLOUD_QUEUE',
+  'cloudQueue/MOVE_TRACKS',
+  'cloudQueue/REMOVE_ELEMENT',
+  'cloudQueue/SET_CURRENT_ITEM',
+  'cloudQueue/SET_SHUFFLED',
+  'cloudQueueV2/CREATE_QUEUE' as redux.ActionType,
+  'cloudQueueV2/UPDATE_CURRENT' as redux.ActionType,
+  'cloudQueueV2/ADD_TO_FUTURE' as redux.ActionType,
+  'cloudQueueV2/REMOVE_FROM_FUTURE' as redux.ActionType,
+  'cloudQueueV2/REMOVE_MANY_FROM_FUTURE' as redux.ActionType,
+  'cloudQueueV2/UPDATE_FUTURE' as redux.ActionType,
+  'cloudQueueV2/CLEAR_QUEUE' as redux.ActionType,
 ]
+
+const CLOUD_ADD_ACTIONS = new Set<string>(['cloudQueue/ADD_ITEMS_TO_CLOUD_QUEUE', 'cloudQueueV2/ADD_TO_FUTURE'])
+const PLAY_NOW_ACTIONS = new Set<string>(['playQueue/ADD_NOW', 'content/FETCH_AND_PLAY_MEDIA_ITEM', 'homepage/PLAY_SINGLE_TRACK'])
+
+function extractIds(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') return []
+  const p = payload as Record<string, unknown>
+  const out: string[] = []
+  const pushId = (v: unknown) => {
+    if (typeof v === 'string' || typeof v === 'number') {
+      const s = String(v).trim()
+      if (s && !out.includes(s)) out.push(s)
+    } else if (v && typeof v === 'object') {
+      const obj = v as Record<string, unknown>
+      pushId(obj.mediaItemId ?? obj.itemId ?? obj.id)
+    }
+  }
+  for (const key of ['mediaItemIds', 'itemIds', 'items']) {
+    const arr = p[key]
+    if (Array.isArray(arr)) {
+      for (const item of arr) pushId(item)
+    }
+  }
+  if (out.length === 0) pushId(p.mediaItemId ?? p.itemId ?? p.id)
+  return out
+}
 
 const MAX_SEED_ITEMS = 50
 
@@ -29,6 +85,7 @@ export class TidalQueueSync {
   private roomTrackByNativeUid = new Map<string, QueueTrack>()
   private roomTrackByRoomUid = new Map<string, QueueTrack>()
   private pendingHostReconcile = false
+  private pendingGuestRestore = false
   private lastObservedElements: unknown = null
   private contextBtn: ReturnType<typeof ContextMenu.addButton>
 
@@ -55,11 +112,15 @@ export class TidalQueueSync {
     this.contextBtn = ContextMenu.addButton(unloads)
     if (typeof (redux.store as { subscribe?: unknown }).subscribe === 'function') {
       const unsubStore = redux.store.subscribe(() => {
-        if (!this.hooks.isActive() || this.hooks.getRole() !== 'host' || this.selfOps > 0) return
+        if (!this.hooks.isActive() || this.selfOps > 0) return
+        const role = this.hooks.getRole()
         const elements = PlayState.playQueue.elements
-        if (elements !== this.lastObservedElements) {
-          this.lastObservedElements = elements
+        if (elements === this.lastObservedElements) return
+        this.lastObservedElements = elements
+        if (role === 'host') {
           this.scheduleHostReconcile()
+        } else if (role === 'guest') {
+          this.scheduleGuestRestore()
         }
       })
       unloads.add(unsubStore)
@@ -125,10 +186,18 @@ export class TidalQueueSync {
         return true
       }
 
-      if (actionName === 'playQueue/ADD_NOW') {
-        const ids = ((payload as { mediaItemIds?: unknown } | null)?.mediaItemIds ?? []) as unknown[]
-        const trackIds = ids.map(String).filter(Boolean)
-        if (trackIds.length > 0 && this.hooks.canGuestAdd()) {
+      if (actionName === 'playQueue/ADD_MEDIA_ITEMS_TO_QUEUE') {
+        const pos = (payload as { position?: string } | null)?.position
+        const trackIds = extractIds(payload)
+        if (pos === 'next' || pos === 'last') {
+          if (!this.hooks.canGuestAdd()) {
+            this.hooks.onAddRestricted()
+          } else if (trackIds.length > 0) {
+            this.hooks.onGuestAdd(trackIds, pos)
+          }
+          return true
+        }
+        if (trackIds.length > 0 && this.hooks.canGuestEdit() && this.hooks.canGuestAdd()) {
           this.hooks.onGuestAdd(trackIds, 'next')
         } else {
           this.hooks.onRestricted()
@@ -136,20 +205,28 @@ export class TidalQueueSync {
         return true
       }
 
-      if (
-        actionName === 'playQueue/CLEAR_QUEUE' ||
-        actionName === 'playQueue/RESET' ||
-        actionName === 'playQueue/ADD_NOW_REST_OF_TRACK_LIST' ||
-        actionName === 'playQueue/ADD_TRACK_LIST_TO_PLAY_QUEUE' ||
-        actionName === 'playQueue/ADD_ALREADY_LOADED_ITEMS_TO_QUEUE' ||
-        actionName === 'playQueue/ADD_MEDIA_ITEMS_TO_QUEUE' ||
-        (actionName as string) === 'playQueue/ADD_SHUFFLED_REST_OF_TRACK_LIST' ||
-        (actionName as string) === 'playQueue/LOAD_TRACK_LIST_AND_ADD_TO_PLAY_QUEUE'
-      ) {
-        this.hooks.onRestricted()
+      if (CLOUD_ADD_ACTIONS.has(actionName as string)) {
+        if (!this.hooks.canGuestAdd()) {
+          this.hooks.onAddRestricted()
+        } else {
+          const trackIds = extractIds(payload)
+          if (trackIds.length > 0) this.hooks.onGuestAdd(trackIds, 'last')
+        }
         return true
       }
-      return undefined
+
+      if (PLAY_NOW_ACTIONS.has(actionName as string)) {
+        const trackIds = extractIds(payload)
+        if (trackIds.length > 0 && this.hooks.canGuestEdit() && this.hooks.canGuestAdd()) {
+          this.hooks.onGuestAdd(trackIds, 'next')
+        } else {
+          this.hooks.onRestricted()
+        }
+        return true
+      }
+
+      this.hooks.onRestricted()
+      return true
     })
 
     ContextMenu.onMediaItem(unloads, async ({ mediaCollection, contextMenu }) => {
@@ -362,6 +439,17 @@ export class TidalQueueSync {
     }
   }
 
+  private scheduleGuestRestore(): void {
+    if (this.pendingGuestRestore) return
+    this.pendingGuestRestore = true
+    queueMicrotask(() => {
+      this.pendingGuestRestore = false
+      if (!this.hooks.isActive() || this.hooks.getRole() !== 'guest') return
+      const room = this.hooks.getRoom()
+      if (room) this.applyRoomToNative(room)
+    })
+  }
+
   private scheduleHostReconcile(): void {
     if (this.pendingHostReconcile) return
     this.pendingHostReconcile = true
@@ -399,6 +487,7 @@ export class TidalQueueSync {
               .map((a) => a.name)
               .filter(Boolean)
               .join(', ')
+          const album = cached?.album ?? item?.tidalItem?.album?.title?.trim()
           const coverUrl = cached?.coverUrl ?? (item ? await item.coverUrl({ res: '320' }).catch(() => undefined) : undefined)
           const durationSec = cached?.durationSec ?? item?.duration
           return {
@@ -406,6 +495,7 @@ export class TidalQueueSync {
             trackId,
             title,
             artist,
+            ...(album ? { album } : {}),
             ...(coverUrl ? { coverUrl } : {}),
             ...(durationSec !== undefined ? { durationSec } : {}),
           }

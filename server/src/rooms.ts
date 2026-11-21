@@ -97,6 +97,7 @@ function toProfile(p: Profile, cid = p.cid): Profile {
     name: p.name,
     avatarUrl: p.avatarUrl,
     ...(p.tidalUserId ? { tidalUserId: p.tidalUserId } : {}),
+    ...(p.profilePath ? { profilePath: p.profilePath } : {}),
   }
 }
 
@@ -203,6 +204,9 @@ export class Rooms {
         return
       case 'standby.close':
         this.closeStandby(cid)
+        return
+      case 'profile.update':
+        this.handleProfileUpdate(cid, msg.profile)
         return
     }
   }
@@ -771,7 +775,7 @@ export class Rooms {
     const standby: Standby = {
       id,
       cid,
-      profile: { ...msg.profile, cid },
+      profile: toProfile(msg.profile, cid),
       queue: msg.queue.slice(0, MAX_QUEUE_TRACKS),
       currentIndex: msg.currentIndex,
       playback: withServerTs(msg.playback, this.hub.now()),
@@ -800,6 +804,42 @@ export class Rooms {
     if (!id) return
     this.connStandby.delete(cid)
     this.standbys.delete(id)
+  }
+
+  private handleProfileUpdate(cid: string, rawProfile: Profile): void {
+    const next = toProfile(rawProfile, cid)
+    const standbyId = this.connStandby.get(cid)
+    if (standbyId) {
+      const standby = this.standbys.get(standbyId)
+      if (standby) standby.profile = next
+    }
+    const room = this.memberRoom(cid)
+    if (!room) return
+    const participant = room.participants.get(cid)
+    if (!participant) return
+    if (participant.role === 'guest' && next.tidalUserId && room.bannedTidalUserIds.has(next.tidalUserId)) {
+      this.banFromRoom(room, cid, participant)
+      this.hub.send(cid, { v: 2, t: 'room.ended', reason: 'banned' })
+      this.broadcastState(room)
+      return
+    }
+    const changed =
+      participant.name !== next.name ||
+      participant.avatarUrl !== next.avatarUrl ||
+      participant.tidalUserId !== next.tidalUserId ||
+      participant.profilePath !== next.profilePath
+    if (!changed) return
+    room.participants.set(cid, {
+      ...next,
+      role: participant.role,
+      audioMode: participant.audioMode,
+      canAddTracks: participant.canAddTracks,
+    })
+    for (const item of room.queue) {
+      if (item.addedBy.cid === cid) item.addedBy = next
+    }
+    room.lastActivity = Date.now()
+    this.broadcastState(room)
   }
 
   private hostRoom(cid: string): Room | null {
