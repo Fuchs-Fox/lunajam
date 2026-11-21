@@ -1,4 +1,4 @@
-import { formatCode, type ResolveSummary } from '../../plugins/lunajam/src/protocol'
+import { formatCode, isRoomCode, type ResolveSummary } from '../../plugins/lunajam/src/protocol'
 
 function escapeHtml(raw: string): string {
   return raw
@@ -34,11 +34,11 @@ p{margin:0;font-size:14px;line-height:1.5;color:rgba(255,255,255,0.64)}
 </html>`
   }
 
-  const formattedCode = formatCode(summary.code)
+  const formattedCode = isRoomCode(summary.code) ? formatCode(summary.code) : 'Solo Jam'
   const hostTitle = `${summary.hostName}'s Jam`
   const trackText = summary.track ? `${summary.track.title}${summary.track.artist ? ` — ${summary.track.artist}` : ''}` : 'Waiting for track'
   const coverHtml = summary.track?.coverUrl
-    ? `<img class="cover" src="${escapeHtml(summary.track.coverUrl)}" alt="" width="64" height="64">`
+    ? `<img class="cover" src="${escapeHtml(summary.track.coverUrl)}" alt="" width="64" height="64" referrerpolicy="no-referrer" decoding="async">`
     : `<div class="cover cover-empty" aria-hidden="true"></div>`
   const deepLink = `tidaluna://lunajam/join?code=${encodeURIComponent(summary.code)}&server=${encodeURIComponent(publicOrigin)}`
 
@@ -106,7 +106,7 @@ ${coverHtml}
   },700);
   ports.forEach(function(port){
     var url="http://127.0.0.1:"+port+"/lunajam-join?code="+encodeURIComponent(code)+"&server="+encodeURIComponent(server);
-    fetch(url,{mode:"cors"}).then(function(r){
+    fetch(url,{method:"POST",mode:"cors",headers:{"X-LunaJam-Join":"1"}}).then(function(r){
       if(!r.ok)throw new Error("bad status");
       return r.json();
     }).then(function(body){

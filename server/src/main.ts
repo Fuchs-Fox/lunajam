@@ -10,6 +10,7 @@ export async function startServer(cfg: Config): Promise<{ port: number; close():
     onMessage: (cid, msg) => rooms.onMessage(cid, msg),
     onDisconnect: (cid) => rooms.onDisconnect(cid),
     resolveToken: (token) => rooms.resolveOrPromote(token),
+    peekToken: (token) => rooms.peekToken(token),
   })
   const port = await hub.listen()
   return {

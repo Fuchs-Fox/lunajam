@@ -21,6 +21,8 @@ function isCurrentFiber(fiber: FiberNode): boolean {
   return node.tag === 3 && node.stateNode?.current === node
 }
 
+let cachedFiberKey: string | null = null
+
 function extractRowProps(row: Element): { uid?: string; trackId?: string; index?: number } {
   const attrUid = row.getAttribute('data-lj-uid') ?? undefined
   const attrTrackId = row.getAttribute('data-lj-track-id') ?? undefined
@@ -34,9 +36,16 @@ function extractRowProps(row: Element): { uid?: string; trackId?: string; index?
     }
   }
 
-  const fiberKey = Object.keys(row).find((k) => k.startsWith('__reactFiber$'))
-  if (!fiberKey) return domMediaId ? { trackId: domMediaId } : {}
-  let fiber = (row as unknown as Record<string, FiberNode | undefined>)[fiberKey]
+  const record = row as unknown as Record<string, FiberNode | undefined>
+  let fiber = cachedFiberKey ? record[cachedFiberKey] : undefined
+  if (!fiber) {
+    const foundKey = Object.keys(row).find((k) => k.startsWith('__reactFiber$'))
+    if (foundKey) {
+      cachedFiberKey = foundKey
+      fiber = record[foundKey]
+    }
+  }
+  if (!fiber) return domMediaId ? { trackId: domMediaId } : {}
   for (let depth = 0; fiber && depth < 16; depth++, fiber = fiber.return ?? undefined) {
     const active = isCurrentFiber(fiber) ? fiber : fiber.alternate ?? fiber
     const props = active?.memoizedProps
@@ -98,6 +107,8 @@ function renderAvatarBadge(
     const img = document.createElement('img')
     img.src = track.addedBy.avatarUrl
     img.alt = track.addedBy.name
+    img.referrerPolicy = 'no-referrer'
+    img.decoding = 'async'
     inner.appendChild(img)
   } else {
     inner.textContent = initialsFor(track.addedBy.name)
@@ -110,34 +121,54 @@ function renderAvatarBadge(
 export class QueueAvatarDecorator {
   private observer: MutationObserver | null = null
   private syncing = false
+  private pendingRefresh = false
 
   constructor(
     unloads: Set<LunaUnload>,
     private session: SessionClient,
     private queueSync: TidalQueueSync,
   ) {
-    const unsub = this.session.subscribe(() => this.refresh())
+    const unsub = this.session.subscribe(() => {
+      this.ensureObserver(Boolean(this.session.snapshot().room))
+      this.refresh()
+    })
     unloads.add(unsub)
-
-    if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined' && document.body) {
-      this.observer = new MutationObserver((mutations) => {
-        if (this.syncing) return
-        const relevant = mutations.some((m) => {
-          const el = m.target as Element | null
-          return !el?.closest?.('.lj-track-avatar') && !el?.closest?.('.lj-queue-mount') && !el?.closest?.('.lj-ctx-layer')
-        })
-        if (relevant) this.refresh()
-      })
-      this.observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['data-test-media-item-id'],
-      })
-    }
-
     unloads.add(() => this.dispose())
+    this.ensureObserver(Boolean(this.session.snapshot().room))
     this.refresh()
+  }
+
+  private ensureObserver(active: boolean): void {
+    if (active) {
+      if (!this.observer && typeof MutationObserver !== 'undefined' && typeof document !== 'undefined' && document.body) {
+        this.observer = new MutationObserver((mutations) => {
+          if (this.syncing) return
+          const relevant = mutations.some((m) => {
+            const el = m.target as Element | null
+            return !el?.closest?.('.lj-track-avatar') && !el?.closest?.('.lj-queue-mount') && !el?.closest?.('.lj-ctx-layer')
+          })
+          if (relevant) this.scheduleRefresh()
+        })
+        this.observer.observe(document.body, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['data-test-media-item-id'],
+        })
+      }
+      return
+    }
+    this.observer?.disconnect()
+    this.observer = null
+  }
+
+  private scheduleRefresh(): void {
+    if (this.pendingRefresh) return
+    this.pendingRefresh = true
+    queueMicrotask(() => {
+      this.pendingRefresh = false
+      this.refresh()
+    })
   }
 
   refresh(): void {
@@ -145,6 +176,7 @@ export class QueueAvatarDecorator {
     this.syncing = true
     try {
       const room = this.session.snapshot().room
+      this.ensureObserver(Boolean(room))
       const aside = room ? findPlayQueueAside() : null
       if (!room || !aside) {
         this.clearBadges()

@@ -4,6 +4,7 @@ import type { QueueTrack, QueueTrackInput, TrackMetaUpdate } from '../protocol'
 const cache = new Map<string, TrackMetaUpdate>()
 const inflight = new Map<string, Promise<TrackMetaUpdate | null>>()
 const storeLoadInFlight = new Map<string, Promise<boolean>>()
+const MAX_META_CACHE = 500
 
 export function toNativeItemId(trackId: string): redux.ItemId {
   const num = Number(trackId)
@@ -95,6 +96,10 @@ export async function resolveTrackMeta(trackId: string): Promise<TrackMetaUpdate
         ...(albumTitle ? { album: albumTitle } : {}),
         ...(coverUrl ? { coverUrl } : {}),
         ...(durationSec !== undefined ? { durationSec } : {}),
+      }
+      if (!cache.has(trackId) && cache.size >= MAX_META_CACHE) {
+        const oldest = cache.keys().next().value
+        if (oldest !== undefined) cache.delete(oldest)
       }
       cache.set(trackId, meta)
       return meta

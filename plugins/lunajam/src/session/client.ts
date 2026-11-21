@@ -579,6 +579,8 @@ export class SessionClient {
         return
       case 'playback.tick':
         if (this.state.room) {
+          const prevPb = this.state.room.playback
+          const prevIdx = this.state.room.currentIndex
           this.state = {
             ...this.state,
             room: {
@@ -588,7 +590,12 @@ export class SessionClient {
             },
           }
           for (const cb of this.tickListeners) cb(msg.playback, msg.currentIndex)
-          this.emitState()
+          const changedMeta =
+            prevIdx !== msg.currentIndex ||
+            prevPb?.trackId !== msg.playback.trackId ||
+            prevPb?.queueUid !== msg.playback.queueUid ||
+            prevPb?.playing !== msg.playback.playing
+          if (changedMeta) this.emitState()
         }
         return
       case 'playback.command':

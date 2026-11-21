@@ -77,6 +77,7 @@ export class FooterButtonMount {
 
   sync(): void {
     if (this.syncing || typeof document === 'undefined') return
+    if (this.host?.isConnected && this.root) return
     this.syncing = true
     try {
       const container = findUtilityContainer()

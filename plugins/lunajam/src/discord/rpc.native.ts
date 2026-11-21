@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { existsSync, lstatSync, statSync } from 'node:fs'
 import * as http from 'node:http'
 import * as net from 'node:net'
 import * as os from 'node:os'
@@ -13,8 +13,25 @@ const OP_PING = 3
 const OP_PONG = 4
 const RPC_PID = 1000
 const WS_CRASH_COOLDOWN_MS = 300_000
+const MAX_RPC_BUFFER = 1_048_576
+const CLIENT_ID_RE = /^\d{17,22}$/
 
 const wsCrashCooldown = new Map<number, number>()
+
+function isSafeUnixSocket(sockPath: string): boolean {
+  if (process.platform === 'win32') return true
+  try {
+    const lst = lstatSync(sockPath)
+    const uid = typeof process.getuid === 'function' ? process.getuid() : null
+    if (uid !== null && lst.uid !== uid) return false
+    const st = lst.isSymbolicLink() ? statSync(sockPath) : lst
+    if (!st.isSocket()) return false
+    if (uid !== null && st.uid !== uid) return false
+    return true
+  } catch {
+    return false
+  }
+}
 
 interface RpcConnection {
   clientId: string
@@ -189,11 +206,15 @@ function connectIpcSocket(socketPath: string, clientId: string): Promise<RpcConn
     })
 
     socket.on('data', (chunk) => {
+      if (rx.length + chunk.length > MAX_RPC_BUFFER) {
+        socket.destroy()
+        return
+      }
       rx = Buffer.concat([rx, chunk])
       while (rx.length >= 8) {
         const op = rx.readInt32LE(0)
         const len = rx.readInt32LE(4)
-        if (len < 0 || len > 1048576) {
+        if (len < 0 || len > MAX_RPC_BUFFER) {
           socket.destroy()
           return
         }
@@ -326,6 +347,10 @@ function connectWsPort(port: number, clientId: string): Promise<RpcConnection> {
         }
 
         const maskLen = masked ? 4 : 0
+        if (len > MAX_RPC_BUFFER) {
+          socketRef?.destroy()
+          return
+        }
         if (rx.length < offset + maskLen + len) return
 
         const maskKey = masked ? rx.subarray(offset, offset + 4) : null
@@ -407,6 +432,10 @@ function connectWsPort(port: number, clientId: string): Promise<RpcConnection> {
       open = true
       if (head.length > 0) rx = Buffer.concat([rx, head])
       socket.on('data', (chunk) => {
+        if (rx.length + chunk.length > MAX_RPC_BUFFER) {
+          socket.destroy()
+          return
+        }
         rx = Buffer.concat([rx, chunk])
         processWsBuffer()
       })
@@ -448,6 +477,7 @@ function connectWsPort(port: number, clientId: string): Promise<RpcConnection> {
 }
 
 async function openConnection(clientId: string, opts?: RpcTestOpts): Promise<RpcConnection | null> {
+  if (!CLIENT_ID_RE.test(clientId)) return null
   if (activeConn && activeConn.isOpen() && activeConn.clientId === clientId) {
     return activeConn
   }
@@ -464,7 +494,7 @@ async function openConnection(clientId: string, opts?: RpcTestOpts): Promise<Rpc
   connectPromise = (async () => {
     const sockets = opts?.socketCandidates ?? candidateSockets()
     for (const sockPath of sockets) {
-      if (process.platform !== 'win32' && !opts?.socketCandidates && !existsSync(sockPath)) continue
+      if (process.platform !== 'win32' && (!existsSync(sockPath) || !isSafeUnixSocket(sockPath))) continue
       try {
         const conn = await connectIpcSocket(sockPath, clientId)
         activeConn = conn

@@ -3773,26 +3773,60 @@ function encode(msg) {
 function isObj(x) {
   return typeof x === "object" && x !== null && !Array.isArray(x);
 }
+var COVER_DOMAINS = ["tidal.com"];
+var AVATAR_DOMAINS = [
+  "tidal.com",
+  "gravatar.com",
+  "discordapp.com",
+  "discordapp.net",
+  "githubusercontent.com",
+  "imgur.com",
+  "catbox.moe",
+  "googleusercontent.com",
+  "twimg.com",
+  "bsky.app"
+];
+function sanitizeText(raw) {
+  let out = "";
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw.charCodeAt(i);
+    if (c >= 32 && c < 127 || c > 159 && (c < 8234 || c > 8238) && (c < 8294 || c > 8297)) {
+      out += raw[i];
+    }
+  }
+  return out.trim();
+}
 function str(x, max) {
   if (typeof x !== "string") return null;
-  const t = x.trim();
+  const t = sanitizeText(x);
   return t.length > 0 && t.length <= max ? t : null;
 }
 function optStr(x, max) {
   if (x === void 0 || x === null) return void 0;
   if (typeof x !== "string") return void 0;
-  const t = x.trim();
+  const t = sanitizeText(x);
   return t.length <= max ? t : t.slice(0, max);
 }
-function safeImageUrl(x) {
+function matchesDomain(host, allowed) {
+  const h = host.toLowerCase();
+  return allowed.some((d) => h === d || h.endsWith(`.${d}`));
+}
+function safeHttpsUrl(x, allowedDomains) {
   if (x === null || x === void 0 || x === "") return null;
   if (typeof x !== "string" || x.length > 512) return null;
   try {
-    const u = new URL(x);
-    return u.protocol === "https:" || u.protocol === "http:" ? u.href : null;
+    const u = new URL(x.trim());
+    if (u.protocol !== "https:" || u.username || u.password || u.port) return null;
+    return matchesDomain(u.hostname, allowedDomains) ? u.href : null;
   } catch {
     return null;
   }
+}
+function safeCoverUrl(x) {
+  return safeHttpsUrl(x, COVER_DOMAINS);
+}
+function safeAvatarUrl(x) {
+  return safeHttpsUrl(x, AVATAR_DOMAINS);
 }
 function fin(x, min = 0, max = 1e14) {
   return typeof x === "number" && Number.isFinite(x) && x >= min && x <= max ? x : null;
@@ -3814,7 +3848,7 @@ function parseProfile(x) {
   return {
     cid,
     name,
-    avatarUrl: safeImageUrl(x.avatarUrl),
+    avatarUrl: safeAvatarUrl(x.avatarUrl),
     ...tidalUserId ? { tidalUserId } : {},
     ...profilePath ? { profilePath } : {}
   };
@@ -3826,7 +3860,7 @@ function parseQueueInput(x) {
   const title = optStr(x.title, 200) ?? "";
   const artist = optStr(x.artist, 200) ?? "";
   const album = optStr(x.album, 200);
-  const coverUrl = safeImageUrl(x.coverUrl) ?? void 0;
+  const coverUrl = safeCoverUrl(x.coverUrl) ?? void 0;
   const durationSec = typeof x.durationSec === "number" && Number.isFinite(x.durationSec) && x.durationSec >= 0 && x.durationSec <= 86400 ? x.durationSec : void 0;
   return { trackId, title, artist, ...album ? { album } : {}, ...coverUrl ? { coverUrl } : {}, ...durationSec !== void 0 ? { durationSec } : {} };
 }
@@ -3891,7 +3925,7 @@ function parseMetaUpdate(x) {
   const artist = optStr(x.artist, 200) ?? "";
   if (!trackId || !title) return null;
   const album = optStr(x.album, 200);
-  const coverUrl = safeImageUrl(x.coverUrl) ?? void 0;
+  const coverUrl = safeCoverUrl(x.coverUrl) ?? void 0;
   const durationSec = typeof x.durationSec === "number" && Number.isFinite(x.durationSec) && x.durationSec >= 0 && x.durationSec <= 86400 ? x.durationSec : void 0;
   return { trackId, title, artist, ...album ? { album } : {}, ...coverUrl ? { coverUrl } : {}, ...durationSec !== void 0 ? { durationSec } : {} };
 }
@@ -4059,13 +4093,16 @@ function loadConfig() {
     rateLimitPerSec: intEnv("LUNAJAM_RATE_LIMIT", 60),
     maxConnections: intEnv("LUNAJAM_MAX_CONNECTIONS", 512),
     idleTimeoutMs: intEnv("LUNAJAM_IDLE_MS", 9e4, 1e3),
-    maxRooms: intEnv("LUNAJAM_MAX_ROOMS", 256)
+    maxRooms: intEnv("LUNAJAM_MAX_ROOMS", 256),
+    roomsPerConn: intEnv("LUNAJAM_ROOMS_PER_CONN", 4, 1),
+    maxConnsPerIp: intEnv("LUNAJAM_MAX_CONNS_PER_IP", 24, 1)
   };
 }
 
 // server/src/hub.ts
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
+import { isIP } from "node:net";
 
 // node_modules/ws/wrapper.mjs
 var import_stream = __toESM(require_stream(), 1);
@@ -4105,10 +4142,10 @@ p{margin:0;font-size:14px;line-height:1.5;color:rgba(255,255,255,0.64)}
 </body>
 </html>`;
   }
-  const formattedCode = formatCode(summary.code);
+  const formattedCode = isRoomCode(summary.code) ? formatCode(summary.code) : "Solo Jam";
   const hostTitle = `${summary.hostName}'s Jam`;
   const trackText = summary.track ? `${summary.track.title}${summary.track.artist ? ` \u2014 ${summary.track.artist}` : ""}` : "Waiting for track";
-  const coverHtml = summary.track?.coverUrl ? `<img class="cover" src="${escapeHtml(summary.track.coverUrl)}" alt="" width="64" height="64">` : `<div class="cover cover-empty" aria-hidden="true"></div>`;
+  const coverHtml = summary.track?.coverUrl ? `<img class="cover" src="${escapeHtml(summary.track.coverUrl)}" alt="" width="64" height="64" referrerpolicy="no-referrer" decoding="async">` : `<div class="cover cover-empty" aria-hidden="true"></div>`;
   const deepLink = `tidaluna://lunajam/join?code=${encodeURIComponent(summary.code)}&server=${encodeURIComponent(publicOrigin)}`;
   return `<!doctype html>
 <html lang="en">
@@ -4174,7 +4211,7 @@ ${coverHtml}
   },700);
   ports.forEach(function(port){
     var url="http://127.0.0.1:"+port+"/lunajam-join?code="+encodeURIComponent(code)+"&server="+encodeURIComponent(server);
-    fetch(url,{mode:"cors"}).then(function(r){
+    fetch(url,{method:"POST",mode:"cors",headers:{"X-LunaJam-Join":"1"}}).then(function(r){
       if(!r.ok)throw new Error("bad status");
       return r.json();
     }).then(function(body){
@@ -4195,28 +4232,96 @@ ${coverHtml}
 var MAX_MESSAGE_BYTES = 262144;
 var MAX_WIRE_BYTES = MAX_MESSAGE_BYTES + 16384;
 var MAX_BUFFERED_BYTES = 2097152;
-function extractClientIp(req) {
-  const remote = req.socket.remoteAddress ?? "";
-  const isLoopback = remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
-  if (isLoopback) {
-    const fwd = req.headers["x-forwarded-for"];
-    const raw = Array.isArray(fwd) ? fwd[0] : fwd;
-    const first = raw?.split(",")[0]?.trim();
-    if (first) return first;
+var HTTP_RATE_WINDOW_MS = 1e4;
+var HTTP_RATE_LIMIT = 60;
+var BOT_UA_RE = /Discordbot|TelegramBot|Slackbot|Twitterbot|WhatsApp|facebookexternalhit|LinkedInBot|Embedly|crawler|spider|preview/i;
+var RFC1918_172_RE = /^172\.(1[6-9]|2\d|3[01])\./;
+var JOIN_CSP = "default-src 'none'; img-src https://resources.tidal.com https://*.tidal.com; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src http://127.0.0.1:*; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+var BASE_SECURITY_HEADERS = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer"
+};
+function isTrustedProxyRemote(addr) {
+  return addr === "127.0.0.1" || addr === "::1" || addr.startsWith("10.") || addr.startsWith("192.168.") || RFC1918_172_RE.test(addr);
+}
+function parseCandidateIp(raw) {
+  let s = raw.trim();
+  if (!s) return null;
+  if (s.startsWith("[")) {
+    const end = s.indexOf("]");
+    if (end > 1) s = s.slice(1, end);
+  } else if (s.includes(".") && s.includes(":")) {
+    s = s.slice(0, s.lastIndexOf(":"));
   }
-  return remote.replace(/^::ffff:/, "");
+  s = s.replace(/^::ffff:/, "");
+  return isIP(s) !== 0 ? s : null;
+}
+function extractClientIp(req) {
+  const cleanRemote = (req.socket.remoteAddress ?? "").replace(/^::ffff:/, "");
+  if (isTrustedProxyRemote(cleanRemote)) {
+    const xReal = req.headers["x-real-ip"];
+    const realStr = Array.isArray(xReal) ? xReal[0] : xReal;
+    const parsedReal = realStr ? parseCandidateIp(realStr) : null;
+    if (parsedReal) return parsedReal;
+    const fwd = req.headers["x-forwarded-for"];
+    const fwdRaw = Array.isArray(fwd) ? fwd[fwd.length - 1] : fwd;
+    if (fwdRaw) {
+      const parts = fwdRaw.split(",");
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const seg = parts[i].trim();
+        if (!seg) continue;
+        const candidate = parseCandidateIp(seg);
+        return candidate ?? cleanRemote;
+      }
+    }
+  }
+  return cleanRemote;
+}
+function safeDecodeSegment(raw) {
+  if (!raw || raw.length > 96) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+}
+function rawByteLength(data) {
+  if (typeof data === "string") return Buffer.byteLength(data);
+  if (Buffer.isBuffer(data)) return data.length;
+  if (Array.isArray(data)) return data.reduce((sum, buf) => sum + buf.length, 0);
+  return data.byteLength;
 }
 var Hub = class {
   constructor(cfg) {
     this.cfg = cfg;
-    this.server = createServer((req, res) => this.onHttp(req, res));
+    this.server = createServer((req, res) => {
+      try {
+        this.onHttp(req, res);
+      } catch {
+        if (!res.headersSent) {
+          res.writeHead(400, { ...BASE_SECURITY_HEADERS, "content-type": "text/plain" }).end("bad request");
+        } else {
+          res.destroy();
+        }
+      }
+    });
+    this.server.headersTimeout = 1e4;
+    this.server.requestTimeout = 1e4;
+    this.server.keepAliveTimeout = 5e3;
     this.server.on("upgrade", (req, socket, head) => {
+      const ip = extractClientIp(req);
       if (this.conns.size >= this.cfg.maxConnections) {
         socket.write("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
         socket.destroy();
         return;
       }
-      this.wss.handleUpgrade(req, socket, head, (ws) => this.attach(ws, extractClientIp(req)));
+      if ((this.ipConnCount.get(ip) ?? 0) >= this.cfg.maxConnsPerIp) {
+        socket.write("HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      this.wss.handleUpgrade(req, socket, head, (ws) => this.attach(ws, ip));
     });
     const idleMs = this.cfg.idleTimeoutMs;
     this.reaper = setInterval(
@@ -4225,6 +4330,9 @@ var Hub = class {
         for (const c of [...this.conns.values()]) {
           if (now - c.lastSeen > idleMs) c.ws.terminate();
         }
+        for (const [ip, entry2] of this.httpRate) {
+          if (now - entry2.windowStart >= HTTP_RATE_WINDOW_MS) this.httpRate.delete(ip);
+        }
       },
       Math.max(50, Math.min(2e3, Math.floor(idleMs / 3)))
     );
@@ -4232,6 +4340,8 @@ var Hub = class {
   }
   cfg;
   conns = /* @__PURE__ */ new Map();
+  ipConnCount = /* @__PURE__ */ new Map();
+  httpRate = /* @__PURE__ */ new Map();
   reaper;
   server;
   wss = new import_websocket_server.default({ noServer: true, maxPayload: MAX_WIRE_BYTES });
@@ -4278,6 +4388,8 @@ var Hub = class {
     clearInterval(this.reaper);
     for (const conn of this.conns.values()) conn.ws.terminate();
     this.conns.clear();
+    this.ipConnCount.clear();
+    this.httpRate.clear();
     this.wss.close();
     await new Promise((resolve) => {
       this.server.close(() => resolve());
@@ -4285,11 +4397,22 @@ var Hub = class {
       setTimeout(() => this.server.closeAllConnections(), 500).unref();
     });
   }
+  allowHttp(ip) {
+    const now = Date.now();
+    let entry2 = this.httpRate.get(ip);
+    if (!entry2 || now - entry2.windowStart >= HTTP_RATE_WINDOW_MS) {
+      entry2 = { windowStart: now, count: 0 };
+      this.httpRate.set(ip, entry2);
+    }
+    entry2.count += 1;
+    return entry2.count <= HTTP_RATE_LIMIT;
+  }
   onHttp(req, res) {
     const method = req.method ?? "GET";
     const urlPath = (req.url ?? "/").split("?")[0] ?? "/";
     if (method === "OPTIONS") {
       res.writeHead(204, {
+        ...BASE_SECURITY_HEADERS,
         "access-control-allow-origin": "*",
         "access-control-allow-methods": "GET, OPTIONS",
         "access-control-allow-headers": "*"
@@ -4298,64 +4421,106 @@ var Hub = class {
       return;
     }
     if (method !== "GET" && method !== "HEAD") {
-      res.writeHead(405, { "content-type": "text/plain" }).end("method not allowed");
+      res.writeHead(405, {
+        ...BASE_SECURITY_HEADERS,
+        "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+        "content-type": "text/plain"
+      }).end("method not allowed");
       return;
     }
     if (urlPath === "/healthz") {
-      res.writeHead(200, { "content-type": "text/plain" }).end("ok");
+      res.writeHead(200, { ...BASE_SECURITY_HEADERS, "content-type": "text/plain" }).end("ok");
       return;
     }
     if (urlPath === "/") {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(
-        '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>LunaJam</title></head><body><h1>LunaJam relay v2</h1></body></html>'
-      );
+      res.writeHead(200, {
+        ...BASE_SECURITY_HEADERS,
+        "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+        "content-type": "text/html; charset=utf-8"
+      }).end('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>LunaJam</title></head><body><h1>LunaJam relay</h1></body></html>');
       return;
     }
     if (urlPath.startsWith("/api/resolve/")) {
-      const token = decodeURIComponent(urlPath.slice("/api/resolve/".length));
-      const summary = this.handler?.resolveToken(token) ?? null;
-      const headers = {
+      const ip = extractClientIp(req);
+      const jsonHeaders = {
+        ...BASE_SECURITY_HEADERS,
         "content-type": "application/json; charset=utf-8",
         "access-control-allow-origin": "*",
         "cache-control": "no-store"
       };
-      if (!summary) {
-        res.writeHead(404, headers).end(JSON.stringify({ error: "not_found" }));
+      if (!this.allowHttp(ip)) {
+        res.writeHead(429, { ...jsonHeaders, "retry-after": "10" }).end(JSON.stringify({ error: "rate_limited" }));
         return;
       }
-      res.writeHead(200, headers).end(JSON.stringify(summary));
+      const token = safeDecodeSegment(urlPath.slice("/api/resolve/".length));
+      if (!token) {
+        res.writeHead(400, jsonHeaders).end(JSON.stringify({ error: "bad_request" }));
+        return;
+      }
+      const summary = this.handler?.resolveToken(token) ?? null;
+      if (!summary) {
+        res.writeHead(404, jsonHeaders).end(JSON.stringify({ error: "not_found" }));
+        return;
+      }
+      res.writeHead(200, jsonHeaders).end(JSON.stringify(summary));
       return;
     }
     if (urlPath.startsWith("/join/")) {
-      const token = decodeURIComponent(urlPath.slice("/join/".length));
-      const summary = this.handler?.resolveToken(token) ?? null;
-      res.writeHead(summary ? 200 : 404, {
+      const ip = extractClientIp(req);
+      const htmlHeaders = {
+        ...BASE_SECURITY_HEADERS,
+        "content-security-policy": JOIN_CSP,
         "content-type": "text/html; charset=utf-8",
         "cache-control": "no-store"
-      }).end(renderJoinPage(summary, this.cfg.publicUrl));
+      };
+      if (!this.allowHttp(ip)) {
+        res.writeHead(429, { ...BASE_SECURITY_HEADERS, "content-type": "text/plain", "retry-after": "10" }).end("too many requests");
+        return;
+      }
+      const token = safeDecodeSegment(urlPath.slice("/join/".length));
+      if (!token) {
+        res.writeHead(400, htmlHeaders).end(renderJoinPage(null, this.cfg.publicUrl));
+        return;
+      }
+      const ua = String(req.headers["user-agent"] ?? "");
+      const isPreview = method === "HEAD" || BOT_UA_RE.test(ua);
+      const summary = isPreview ? this.handler?.peekToken(token) ?? null : this.handler?.resolveToken(token) ?? null;
+      res.writeHead(summary ? 200 : 404, htmlHeaders).end(method === "HEAD" ? void 0 : renderJoinPage(summary, this.cfg.publicUrl));
       return;
     }
-    res.writeHead(404, { "content-type": "text/plain" }).end("not found");
+    res.writeHead(404, {
+      ...BASE_SECURITY_HEADERS,
+      "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+      "content-type": "text/plain"
+    }).end("not found");
   }
   attach(ws, ip) {
     const cid = randomUUID();
     const conn = { cid, ws, ip, windowStart: Date.now(), count: 0, lastSeen: Date.now() };
     this.conns.set(cid, conn);
+    this.ipConnCount.set(ip, (this.ipConnCount.get(ip) ?? 0) + 1);
     ws.on("message", (data) => {
       conn.lastSeen = Date.now();
-      const raw = typeof data === "string" ? data : data.toString("utf8");
-      if (Buffer.byteLength(raw) > MAX_MESSAGE_BYTES) {
+      if (rawByteLength(data) > MAX_MESSAGE_BYTES) {
         this.send(cid, { v: 2, t: "error", code: "message_too_large", message: "Payload limit exceeded" });
         ws.close(1009);
         return;
       }
       if (!this.tickRate(conn)) return;
-      const msg = decodeClient(raw);
-      if (!msg) return;
-      this.handler?.onMessage(cid, msg);
+      try {
+        const raw = typeof data === "string" ? data : data.toString("utf8");
+        const msg = decodeClient(raw);
+        if (!msg) return;
+        this.handler?.onMessage(cid, msg);
+      } catch {
+        return;
+      }
     });
     ws.on("close", () => {
       this.conns.delete(cid);
+      const prev = this.ipConnCount.get(ip) ?? 0;
+      if (prev <= 1) this.ipConnCount.delete(ip);
+      else this.ipConnCount.set(ip, prev - 1);
       this.handler?.onDisconnect(cid);
     });
     ws.on("error", () => ws.terminate());
@@ -4377,7 +4542,7 @@ var Hub = class {
 };
 
 // server/src/rooms.ts
-import { createHash, randomBytes, randomUUID as randomUUID2 } from "node:crypto";
+import { createHash, randomBytes, randomUUID as randomUUID2, timingSafeEqual } from "node:crypto";
 function generateRoomCode(existing) {
   for (let attempt = 0; attempt < 32; attempt++) {
     const bytes = randomBytes(8);
@@ -4400,6 +4565,11 @@ function withServerTs(playback, now) {
 function hashPeerId(peerId) {
   if (!peerId) return void 0;
   return createHash("sha256").update(peerId).digest("hex").slice(0, 24);
+}
+function safeTokenEqual(a, b) {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && timingSafeEqual(ab, bb);
 }
 function toProfile(p, cid = p.cid) {
   return {
@@ -4437,6 +4607,7 @@ var Rooms = class {
   standbys = /* @__PURE__ */ new Map();
   connStandby = /* @__PURE__ */ new Map();
   promoted = /* @__PURE__ */ new Map();
+  roomCreates = /* @__PURE__ */ new Map();
   sweeper;
   stop() {
     clearInterval(this.sweeper);
@@ -4448,6 +4619,7 @@ var Rooms = class {
     this.standbys.clear();
     this.connStandby.clear();
     this.promoted.clear();
+    this.roomCreates.clear();
   }
   onMessage(cid, msg) {
     switch (msg.t) {
@@ -4518,6 +4690,7 @@ var Rooms = class {
   }
   onDisconnect(cid) {
     this.closeStandby(cid);
+    this.roomCreates.delete(cid);
     const code = this.connRoom.get(cid);
     if (!code) return;
     this.connRoom.delete(cid);
@@ -4556,6 +4729,32 @@ var Rooms = class {
       if (!room) return null;
       this.promoted.set(token, { code: room.code, expiresAt: Date.now() + 6e4 });
       return this.summarizeRoom(token, room);
+    }
+    return null;
+  }
+  peekToken(rawToken) {
+    const token = rawToken.trim();
+    if (isRoomCode(token)) {
+      const room = this.rooms.get(normalizeCode(token));
+      return room ? this.summarizeRoom(token, room) : null;
+    }
+    if (isStandbyToken(token)) {
+      const cached = this.promoted.get(token);
+      if (cached && cached.expiresAt > Date.now()) {
+        const room = this.rooms.get(cached.code);
+        if (room) return this.summarizeRoom(token, room);
+      }
+      const standby = this.standbys.get(token);
+      if (!standby) return null;
+      const active = standby.currentIndex >= 0 && standby.currentIndex < standby.queue.length ? standby.queue[standby.currentIndex] : null;
+      return {
+        token,
+        code: standby.id,
+        hostName: standby.profile.name,
+        participantCount: 1,
+        maxParticipants: this.cfg.maxParticipants,
+        track: active ? { title: active.title || "Untitled", artist: active.artist || "", ...active.coverUrl ? { coverUrl: active.coverUrl } : {} } : null
+      };
     }
     return null;
   }
@@ -4626,7 +4825,7 @@ var Rooms = class {
     this.closeStandby(cid);
     if (msg.code && msg.hostToken) {
       const existing = this.rooms.get(msg.code);
-      if (existing && existing.hostToken === msg.hostToken) {
+      if (existing && safeTokenEqual(existing.hostToken, msg.hostToken)) {
         if (existing.graceTimer) {
           clearTimeout(existing.graceTimer);
           existing.graceTimer = null;
@@ -4654,6 +4853,17 @@ var Rooms = class {
         this.broadcastState(existing);
         return;
       }
+    }
+    const now = Date.now();
+    let createEntry = this.roomCreates.get(cid);
+    if (!createEntry || now - createEntry.windowStart >= 6e4) {
+      createEntry = { windowStart: now, count: 0 };
+      this.roomCreates.set(cid, createEntry);
+    }
+    createEntry.count += 1;
+    if (createEntry.count > Math.max(2, this.cfg.roomsPerConn)) {
+      this.hub.send(cid, { v: 2, t: "error", code: "room_rate_limit", message: "Creating rooms too quickly" });
+      return;
     }
     if (this.rooms.size >= this.cfg.maxRooms) {
       this.hub.send(cid, { v: 2, t: "error", code: "room_limit", message: "Server room limit reached" });
@@ -4882,8 +5092,9 @@ var Rooms = class {
       room.currentIndex = currentIndex;
     }
     room.lastActivity = Date.now();
+    if (room.participants.size <= 1 || !room.playback) return;
     const recipients = [...room.participants.keys()].filter((pid) => pid !== cid);
-    if (recipients.length > 0 && room.playback) {
+    if (recipients.length > 0) {
       this.hub.broadcast(recipients, {
         v: 2,
         t: "playback.tick",
@@ -5005,9 +5216,13 @@ var Rooms = class {
   handleQueueMeta(cid, updates) {
     const room = this.memberRoom(cid);
     if (!room) return;
+    const sender = room.participants.get(cid);
+    if (!sender) return;
+    const restrictOwn = sender.role !== "host" && !sender.canAddTracks;
     const byId = new Map(updates.map((u) => [u.trackId, u]));
     let changed = false;
     for (const item of room.queue) {
+      if (restrictOwn && item.addedBy.cid !== cid) continue;
       const u = byId.get(item.trackId);
       if (!u) continue;
       if (!item.title && u.title) {
@@ -5039,6 +5254,7 @@ var Rooms = class {
   handleStandbyOpen(cid, msg) {
     if (this.connRoom.has(cid)) return;
     const existingId = this.connStandby.get(cid);
+    if (!existingId && this.standbys.size >= this.cfg.maxRooms * 2) return;
     const id = existingId ?? generateStandbyId();
     const standby = {
       id,
@@ -5143,6 +5359,15 @@ var Rooms = class {
     for (const [token, entry2] of this.promoted) {
       if (entry2.expiresAt <= now) this.promoted.delete(token);
     }
+    for (const [id, sb] of this.standbys) {
+      if (now - sb.updatedAt > this.cfg.roomTtlMs) {
+        this.standbys.delete(id);
+        this.connStandby.delete(sb.cid);
+      }
+    }
+    for (const [cid, entry2] of this.roomCreates) {
+      if (now - entry2.windowStart >= 6e4) this.roomCreates.delete(cid);
+    }
   }
 };
 
@@ -5153,7 +5378,8 @@ async function startServer(cfg) {
   hub.setHandler({
     onMessage: (cid, msg) => rooms.onMessage(cid, msg),
     onDisconnect: (cid) => rooms.onDisconnect(cid),
-    resolveToken: (token) => rooms.resolveOrPromote(token)
+    resolveToken: (token) => rooms.resolveOrPromote(token),
+    peekToken: (token) => rooms.peekToken(token)
   });
   const port = await hub.listen();
   return {

@@ -7,13 +7,19 @@ export interface LoopbackJoinRequest {
 
 const VALID_TOKEN_RE = /^[A-Za-z0-9_-]{6,24}$/
 const MAX_PENDING_JOINS = 16
+const MAX_JOIN_BODY_BYTES = 1024
+const RATE_WINDOW_MS = 5000
+const RATE_LIMIT = 8
+const DEFAULT_ORIGIN = 'https://lunajam.sn0w13.de'
 
 let server: http.Server | null = null
 let boundPort: number | null = null
 const pendingJoins: LoopbackJoinRequest[] = []
+let rateWindowStart = 0
+let rateCount = 0
 
-function safeServerParam(raw: string | null): string | undefined {
-  if (!raw) return undefined
+function safeOrigin(raw: string | undefined): string | null {
+  if (!raw) return null
   try {
     const parsed = new URL(raw)
     if (parsed.protocol === 'https:') return parsed.origin
@@ -24,31 +30,71 @@ function safeServerParam(raw: string | null): string | undefined {
       return parsed.origin
     }
   } catch {
-    return undefined
+    return null
   }
-  return undefined
+  return null
 }
 
-function corsHeaders(): Record<string, string> {
+function safeServerParam(raw: string | null): string | undefined {
+  if (!raw) return undefined
+  return safeOrigin(raw) ?? undefined
+}
+
+function corsHeaders(allowOrigin: string): Record<string, string> {
   return {
-    'access-control-allow-origin': '*',
-    'access-control-allow-methods': 'GET, OPTIONS',
-    'access-control-allow-headers': 'Content-Type',
+    'access-control-allow-origin': allowOrigin,
+    vary: 'Origin',
+    'access-control-allow-methods': 'POST, OPTIONS',
+    'access-control-allow-headers': 'Content-Type, X-LunaJam-Join',
     'access-control-allow-private-network': 'true',
     'cache-control': 'no-store',
   }
 }
 
+function allowRate(): boolean {
+  const now = Date.now()
+  if (now - rateWindowStart >= RATE_WINDOW_MS) {
+    rateWindowStart = now
+    rateCount = 0
+  }
+  rateCount += 1
+  return rateCount <= RATE_LIMIT
+}
+
 function tryListen(port: number): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = http.createServer((req, res) => {
-      const headers = corsHeaders()
+      const reqOriginHeader = typeof req.headers.origin === 'string' ? req.headers.origin : undefined
+      const checkedOrigin = reqOriginHeader ? safeOrigin(reqOriginHeader) : DEFAULT_ORIGIN
+      if (!checkedOrigin) {
+        req.resume()
+        res.writeHead(403, corsHeaders(DEFAULT_ORIGIN)).end(JSON.stringify({ ok: false, error: 'forbidden_origin' }))
+        return
+      }
+
+      const headers = corsHeaders(checkedOrigin)
+      const contentLen = Number.parseInt(String(req.headers['content-length'] ?? '0'), 10)
+      if (Number.isFinite(contentLen) && contentLen > MAX_JOIN_BODY_BYTES) {
+        req.resume()
+        res.writeHead(413, headers).end(JSON.stringify({ ok: false, error: 'payload_too_large' }))
+        return
+      }
+      req.resume()
+
       if (req.method === 'OPTIONS') {
         res.writeHead(204, headers).end()
         return
       }
-      if (req.method !== 'GET') {
-        res.writeHead(405, headers).end(JSON.stringify({ ok: false }))
+      if (req.method !== 'POST') {
+        res.writeHead(405, headers).end(JSON.stringify({ ok: false, error: 'method_not_allowed' }))
+        return
+      }
+      if (req.headers['x-lunajam-join'] !== '1') {
+        res.writeHead(403, headers).end(JSON.stringify({ ok: false, error: 'missing_header' }))
+        return
+      }
+      if (!allowRate()) {
+        res.writeHead(429, headers).end(JSON.stringify({ ok: false, error: 'rate_limited' }))
         return
       }
 
@@ -80,11 +126,15 @@ function tryListen(port: number): Promise<number> {
         win?.show?.()
         win?.focus?.()
       } catch {
-        return
+        void 0
       }
 
       res.writeHead(200, { ...headers, 'content-type': 'application/json' }).end(JSON.stringify({ ok: true }))
     })
+
+    srv.headersTimeout = 5000
+    srv.requestTimeout = 5000
+    srv.keepAliveTimeout = 2000
 
     srv.once('error', (err) => {
       srv.close()
@@ -123,6 +173,8 @@ export async function stopLoopback(): Promise<void> {
   server = null
   boundPort = null
   pendingJoins.length = 0
+  rateWindowStart = 0
+  rateCount = 0
   if (srv) {
     await new Promise<void>((resolve) => {
       srv.close(() => resolve())

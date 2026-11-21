@@ -140,4 +140,67 @@ describe('protocol v2', () => {
     expect(decodeClient(JSON.stringify({ v: 2, t: 'queue.add', insert: 'next', tracks: [] }))).toBeNull()
     expect(decodeServer(JSON.stringify({ v: 2, t: 'room.ended', reason: 'unknown' }))).toBeNull()
   })
+
+  it('strips unsafe control/bidi characters and enforces strict HTTPS domain allowlists on coverUrl and avatarUrl', () => {
+    const sanitized = decodeClient(
+      JSON.stringify({
+        v: 2,
+        t: 'room.join',
+        code: 'K7M4P9Q2',
+        profile: {
+          cid: '',
+          name: 'Al\u202ee\u0007x',
+          avatarUrl: 'https://www.gravatar.com/avatar/00000000000000000000000000000000',
+        },
+        audioMode: 'remote',
+      }),
+    )
+    expect(sanitized).toEqual({
+      v: 2,
+      t: 'room.join',
+      code: 'K7M4P9Q2',
+      profile: {
+        cid: '',
+        name: 'Alex',
+        avatarUrl: 'https://www.gravatar.com/avatar/00000000000000000000000000000000',
+      },
+      audioMode: 'remote',
+    })
+
+    const evilProfile = decodeClient(
+      JSON.stringify({
+        v: 2,
+        t: 'profile.update',
+        profile: { cid: 'c1', name: 'Bob', avatarUrl: 'http://192.168.1.10/track.png' },
+      }),
+    )
+    expect(evilProfile?.t === 'profile.update' && evilProfile.profile.avatarUrl).toBeNull()
+
+    const discordAvatar = decodeClient(
+      JSON.stringify({
+        v: 2,
+        t: 'profile.update',
+        profile: { cid: 'c1', name: 'Bob', avatarUrl: 'https://cdn.discordapp.com/avatars/1/2.png' },
+      }),
+    )
+    expect(discordAvatar?.t === 'profile.update' && discordAvatar.profile.avatarUrl).toBe(
+      'https://cdn.discordapp.com/avatars/1/2.png',
+    )
+
+    const coverCheck = decodeClient(
+      JSON.stringify({
+        v: 2,
+        t: 'queue.add',
+        insert: 'last',
+        tracks: [
+          { trackId: '1', title: 'S\u2066ong', artist: 'Art', coverUrl: 'https://evil.example/c.jpg' },
+          { trackId: '2', title: 'Ok', artist: 'Art', coverUrl: 'https://resources.tidal.com/images/ok/320x320.jpg' },
+        ],
+      }),
+    )
+    if (coverCheck?.t !== 'queue.add') throw new Error('expected queue.add')
+    expect(coverCheck.tracks[0]!.title).toBe('Song')
+    expect(coverCheck.tracks[0]!.coverUrl).toBeUndefined()
+    expect(coverCheck.tracks[1]!.coverUrl).toBe('https://resources.tidal.com/images/ok/320x320.jpg')
+  })
 })

@@ -134,7 +134,16 @@ export const JamBody: FC<JamBodyProps> = ({
 
       {inviteOpen && (
         <div className="lj-invite-panel">
-          <div className="lj-qr-frame" dangerouslySetInnerHTML={qrSvg ? { __html: qrSvg } : undefined} />
+          <div className="lj-qr-frame">
+            {qrSvg ? (
+              <img
+                src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(qrSvg)}`}
+                width={120}
+                height={120}
+                alt="Invite QR code"
+              />
+            ) : null}
+          </div>
           <div className="lj-invite-meta">
             <p className="lj-room-code">{formatCode(room.code)}</p>
             <p className="lj-room-url" title={joinUrl}>

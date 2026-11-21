@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import {
   CROCKFORD_ALPHABET,
   MAX_QUEUE_TRACKS,
@@ -91,6 +91,12 @@ function hashPeerId(peerId?: string): string | undefined {
   return createHash('sha256').update(peerId).digest('hex').slice(0, 24)
 }
 
+function safeTokenEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a)
+  const bb = Buffer.from(b)
+  return ab.length === bb.length && timingSafeEqual(ab, bb)
+}
+
 function toProfile(p: Profile, cid = p.cid): Profile {
   return {
     cid,
@@ -121,6 +127,7 @@ export class Rooms {
   private standbys = new Map<string, Standby>()
   private connStandby = new Map<string, string>()
   private promoted = new Map<string, { code: string; expiresAt: number }>()
+  private roomCreates = new Map<string, { windowStart: number; count: number }>()
   private sweeper: ReturnType<typeof setInterval>
 
   constructor(
@@ -141,6 +148,7 @@ export class Rooms {
     this.standbys.clear()
     this.connStandby.clear()
     this.promoted.clear()
+    this.roomCreates.clear()
   }
 
   onMessage(cid: string, msg: ClientMsg): void {
@@ -213,6 +221,7 @@ export class Rooms {
 
   onDisconnect(cid: string): void {
     this.closeStandby(cid)
+    this.roomCreates.delete(cid)
     const code = this.connRoom.get(cid)
     if (!code) return
     this.connRoom.delete(cid)
@@ -254,6 +263,38 @@ export class Rooms {
       if (!room) return null
       this.promoted.set(token, { code: room.code, expiresAt: Date.now() + 60000 })
       return this.summarizeRoom(token, room)
+    }
+    return null
+  }
+
+  peekToken(rawToken: string): ResolveSummary | null {
+    const token = rawToken.trim()
+    if (isRoomCode(token)) {
+      const room = this.rooms.get(normalizeCode(token))
+      return room ? this.summarizeRoom(token, room) : null
+    }
+    if (isStandbyToken(token)) {
+      const cached = this.promoted.get(token)
+      if (cached && cached.expiresAt > Date.now()) {
+        const room = this.rooms.get(cached.code)
+        if (room) return this.summarizeRoom(token, room)
+      }
+      const standby = this.standbys.get(token)
+      if (!standby) return null
+      const active =
+        standby.currentIndex >= 0 && standby.currentIndex < standby.queue.length
+          ? standby.queue[standby.currentIndex]
+          : null
+      return {
+        token,
+        code: standby.id,
+        hostName: standby.profile.name,
+        participantCount: 1,
+        maxParticipants: this.cfg.maxParticipants,
+        track: active
+          ? { title: active.title || 'Untitled', artist: active.artist || '', ...(active.coverUrl ? { coverUrl: active.coverUrl } : {}) }
+          : null,
+      }
     }
     return null
   }
@@ -333,7 +374,7 @@ export class Rooms {
     this.closeStandby(cid)
     if (msg.code && msg.hostToken) {
       const existing = this.rooms.get(msg.code)
-      if (existing && existing.hostToken === msg.hostToken) {
+      if (existing && safeTokenEqual(existing.hostToken, msg.hostToken)) {
         if (existing.graceTimer) {
           clearTimeout(existing.graceTimer)
           existing.graceTimer = null
@@ -361,6 +402,18 @@ export class Rooms {
         this.broadcastState(existing)
         return
       }
+    }
+
+    const now = Date.now()
+    let createEntry = this.roomCreates.get(cid)
+    if (!createEntry || now - createEntry.windowStart >= 60000) {
+      createEntry = { windowStart: now, count: 0 }
+      this.roomCreates.set(cid, createEntry)
+    }
+    createEntry.count += 1
+    if (createEntry.count > Math.max(2, this.cfg.roomsPerConn)) {
+      this.hub.send(cid, { v: 2, t: 'error', code: 'room_rate_limit', message: 'Creating rooms too quickly' })
+      return
     }
 
     if (this.rooms.size >= this.cfg.maxRooms) {
@@ -607,8 +660,9 @@ export class Rooms {
       room.currentIndex = currentIndex
     }
     room.lastActivity = Date.now()
+    if (room.participants.size <= 1 || !room.playback) return
     const recipients = [...room.participants.keys()].filter((pid) => pid !== cid)
-    if (recipients.length > 0 && room.playback) {
+    if (recipients.length > 0) {
       this.hub.broadcast(recipients, {
         v: 2,
         t: 'playback.tick',
@@ -736,9 +790,13 @@ export class Rooms {
   private handleQueueMeta(cid: string, updates: Extract<ClientMsg, { t: 'queue.meta' }>['updates']): void {
     const room = this.memberRoom(cid)
     if (!room) return
+    const sender = room.participants.get(cid)
+    if (!sender) return
+    const restrictOwn = sender.role !== 'host' && !sender.canAddTracks
     const byId = new Map(updates.map((u) => [u.trackId, u]))
     let changed = false
     for (const item of room.queue) {
+      if (restrictOwn && item.addedBy.cid !== cid) continue
       const u = byId.get(item.trackId)
       if (!u) continue
       if (!item.title && u.title) {
@@ -771,6 +829,7 @@ export class Rooms {
   private handleStandbyOpen(cid: string, msg: Extract<ClientMsg, { t: 'standby.open' }>): void {
     if (this.connRoom.has(cid)) return
     const existingId = this.connStandby.get(cid)
+    if (!existingId && this.standbys.size >= this.cfg.maxRooms * 2) return
     const id = existingId ?? generateStandbyId()
     const standby: Standby = {
       id,
@@ -886,6 +945,15 @@ export class Rooms {
     }
     for (const [token, entry] of this.promoted) {
       if (entry.expiresAt <= now) this.promoted.delete(token)
+    }
+    for (const [id, sb] of this.standbys) {
+      if (now - sb.updatedAt > this.cfg.roomTtlMs) {
+        this.standbys.delete(id)
+        this.connStandby.delete(sb.cid)
+      }
+    }
+    for (const [cid, entry] of this.roomCreates) {
+      if (now - entry.windowStart >= 60000) this.roomCreates.delete(cid)
     }
   }
 }

@@ -11,8 +11,8 @@ interface TestClient {
   close(): Promise<void>
 }
 
-async function connectClient(port: number): Promise<TestClient> {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}`)
+async function connectClient(port: number, headers?: Record<string, string>): Promise<TestClient> {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}`, headers ? { headers } : undefined)
   const queue: ServerMsg[] = []
   const waiters: Array<{ pred: (m: ServerMsg) => boolean; resolve: (m: ServerMsg) => void; reject: (e: Error) => void }> = []
 
@@ -97,6 +97,8 @@ describe('relay server v2', () => {
       maxConnections: 64,
       idleTimeoutMs: 60000,
       maxRooms: 32,
+      roomsPerConn: 10,
+      maxConnsPerIp: 32,
     })
     closers.push(() => srv.close())
     return srv
@@ -517,5 +519,93 @@ describe('relay server v2', () => {
     expect(alex?.avatarUrl).toBe('https://resources.tidal.com/images/alex-v2.jpg')
     expect(updated.state.queue[0]!.addedBy.profilePath).toBe('/@alex')
     expect(updated.state.queue[0]!.addedBy.avatarUrl).toBe('https://resources.tidal.com/images/alex-v2.jpg')
+  })
+
+  it('survives malformed percent-encoding, keeps standby unpromoted for link previews, and trusts rightmost X-Forwarded-For IP', async () => {
+    const srv = await boot()
+
+    const badJoin = await fetch(`http://127.0.0.1:${srv.port}/join/%E0%A4%A`)
+    expect(badJoin.status).toBe(400)
+    expect(badJoin.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(badJoin.headers.get('x-frame-options')).toBe('DENY')
+
+    const badResolve = await fetch(`http://127.0.0.1:${srv.port}/api/resolve/%ZZ`)
+    expect(badResolve.status).toBe(400)
+
+    const solo = await connectClient(srv.port, { 'X-Forwarded-For': '198.51.100.1' })
+    closers.push(() => solo.close())
+    await solo.next((m) => m.t === 'welcome')
+    solo.send({
+      v: 2,
+      t: 'standby.open',
+      profile: { cid: '', name: 'Host', avatarUrl: null },
+      queue: [{ trackId: '777', title: 'Nightcall', artist: 'Kavinsky' }],
+      currentIndex: 0,
+      playback: { trackId: '777', queueUid: null, posMs: 1000, playing: true },
+      allowGuestControl: true,
+    })
+    const ready = await solo.next((m) => m.t === 'standby.ready')
+    if (ready.t !== 'standby.ready') throw new Error('expected standby.ready')
+
+    const botPreview = await fetch(`http://127.0.0.1:${srv.port}/join/${ready.standbyId}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)' },
+    })
+    expect(botPreview.status).toBe(200)
+    expect(await botPreview.text()).toContain('Nightcall')
+
+    const headPreview = await fetch(`http://127.0.0.1:${srv.port}/join/${ready.standbyId}`, { method: 'HEAD' })
+    expect(headPreview.status).toBe(200)
+    expect(solo.queue.some((m) => m.t === 'standby.promoted')).toBe(false)
+
+    const humanJoin = await fetch(`http://127.0.0.1:${srv.port}/join/${ready.standbyId}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    })
+    expect(humanJoin.status).toBe(200)
+    const promoted = await solo.next((m) => m.t === 'standby.promoted')
+    if (promoted.t !== 'standby.promoted') throw new Error('expected standby.promoted')
+
+    const bannedGuest = await connectClient(srv.port, { 'X-Forwarded-For': '1.2.3.4, 203.0.113.55' })
+    closers.push(() => bannedGuest.close())
+    await bannedGuest.next((m) => m.t === 'welcome')
+    bannedGuest.send({
+      v: 2,
+      t: 'room.join',
+      code: promoted.state.code,
+      profile: { cid: '', name: 'Bad', avatarUrl: null },
+      audioMode: 'remote',
+    })
+    const gJoined = await bannedGuest.next((m) => m.t === 'room.joined')
+    if (gJoined.t !== 'room.joined') throw new Error('expected guest joined')
+    const badCid = gJoined.state.participants.find((p) => p.name === 'Bad')!.cid
+
+    solo.send({ v: 2, t: 'room.kick', targetCid: badCid })
+    const ended = await bannedGuest.next((m) => m.t === 'room.ended')
+    expect(ended.t === 'room.ended' && ended.reason).toBe('banned')
+
+    const spoofPrefixRetry = await connectClient(srv.port, { 'X-Forwarded-For': '8.8.8.8, 203.0.113.55' })
+    closers.push(() => spoofPrefixRetry.close())
+    await spoofPrefixRetry.next((m) => m.t === 'welcome')
+    spoofPrefixRetry.send({
+      v: 2,
+      t: 'room.join',
+      code: promoted.state.code,
+      profile: { cid: '', name: 'Bad2', avatarUrl: null },
+      audioMode: 'remote',
+    })
+    const blocked = await spoofPrefixRetry.next((m) => m.t === 'error')
+    expect(blocked.t === 'error' && blocked.code).toBe('room_banned')
+
+    const legitimateGuest = await connectClient(srv.port, { 'X-Forwarded-For': '203.0.113.55, 198.51.100.22' })
+    closers.push(() => legitimateGuest.close())
+    await legitimateGuest.next((m) => m.t === 'welcome')
+    legitimateGuest.send({
+      v: 2,
+      t: 'room.join',
+      code: promoted.state.code,
+      profile: { cid: '', name: 'Good', avatarUrl: null },
+      audioMode: 'remote',
+    })
+    const okJoined = await legitimateGuest.next((m) => m.t === 'room.joined')
+    expect(okJoined.t).toBe('room.joined')
   })
 })

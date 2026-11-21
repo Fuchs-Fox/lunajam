@@ -71,6 +71,7 @@ export class QueueHeaderMount {
   private observer: MutationObserver | null = null
   private pulseTimer: ReturnType<typeof setTimeout> | null = null
   private pulsing = false
+  private lastRenderedPulsing = false
   private syncing = false
 
   constructor(
@@ -80,20 +81,26 @@ export class QueueHeaderMount {
   ) {
     const unsub = this.session.subscribe(() => this.sync())
     unloads.add(unsub)
-
-    if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined' && document.body) {
-      this.observer = new MutationObserver((mutations) => {
-        if (this.syncing) return
-        const relevant = mutations.some(
-          (m) => !(m.target as Element | null)?.closest?.('.lj-queue-mount, .lj-ctx-layer'),
-        )
-        if (relevant) this.sync()
-      })
-      this.observer.observe(document.body, { childList: true, subtree: true })
-    }
-
     unloads.add(() => this.dispose())
     this.sync()
+  }
+
+  private ensureObserver(active: boolean): void {
+    if (active) {
+      if (!this.observer && typeof MutationObserver !== 'undefined' && typeof document !== 'undefined' && document.body) {
+        this.observer = new MutationObserver((mutations) => {
+          if (this.syncing) return
+          const relevant = mutations.some(
+            (m) => !(m.target as Element | null)?.closest?.('.lj-queue-mount, .lj-ctx-layer'),
+          )
+          if (relevant) this.sync()
+        })
+        this.observer.observe(document.body, { childList: true, subtree: true })
+      }
+      return
+    }
+    this.observer?.disconnect()
+    this.observer = null
   }
 
   pulse(): void {
@@ -114,10 +121,20 @@ export class QueueHeaderMount {
     try {
       const state = this.session.snapshot()
       const active = Boolean(state.room) || state.status === 'connecting' || state.status === 'reconnecting'
+      this.ensureObserver(active)
       const aside = active ? findPlayQueueAside() : null
 
       if (!active || !aside) {
         this.unmountCard()
+        return
+      }
+
+      if (
+        this.container?.isConnected &&
+        this.container.parentElement === aside &&
+        this.root &&
+        this.lastRenderedPulsing === this.pulsing
+      ) {
         return
       }
 
@@ -152,6 +169,7 @@ export class QueueHeaderMount {
   }
 
   private render(): void {
+    this.lastRenderedPulsing = this.pulsing
     this.root?.render(
       <QueueHeaderCard session={this.session} pulsing={this.pulsing} onSelectTrack={this.onSelectTrack} />,
     )

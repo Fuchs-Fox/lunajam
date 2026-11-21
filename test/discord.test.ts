@@ -134,19 +134,42 @@ describe('Discord native RPC & loopback bridge', () => {
     expect(captured[0]!.msg.cmd).toBe('SET_ACTIVITY')
   })
 
-  it('serves local loopback join bridge with Private Network Access CORS headers', async () => {
+  it('serves local loopback join bridge only for POST with X-LunaJam-Join header and safe Origin', async () => {
     const port = await startLoopback([0])
     expect(port).toBeTypeOf('number')
 
-    const preflight = await fetch(`http://127.0.0.1:${port}/lunajam-join`, { method: 'OPTIONS' })
+    const preflight = await fetch(`http://127.0.0.1:${port}/lunajam-join`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://lunajam.sn0w13.de' },
+    })
     expect(preflight.status).toBe(204)
     expect(preflight.headers.get('access-control-allow-private-network')).toBe('true')
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('https://lunajam.sn0w13.de')
 
-    const bad = await fetch(`http://127.0.0.1:${port}/lunajam-join?code=!!`)
+    const getBlocked = await fetch(`http://127.0.0.1:${port}/lunajam-join?code=K7M4P9Q2`)
+    expect(getBlocked.status).toBe(405)
+
+    const missingHeader = await fetch(`http://127.0.0.1:${port}/lunajam-join?code=K7M4P9Q2`, { method: 'POST' })
+    expect(missingHeader.status).toBe(403)
+
+    const evilOrigin = await fetch(`http://127.0.0.1:${port}/lunajam-join?code=K7M4P9Q2`, {
+      method: 'POST',
+      headers: { 'X-LunaJam-Join': '1', Origin: 'http://evil.example' },
+    })
+    expect(evilOrigin.status).toBe(403)
+
+    const bad = await fetch(`http://127.0.0.1:${port}/lunajam-join?code=!!`, {
+      method: 'POST',
+      headers: { 'X-LunaJam-Join': '1', Origin: 'https://lunajam.sn0w13.de' },
+    })
     expect(bad.status).toBe(400)
 
     const ok = await fetch(
       `http://127.0.0.1:${port}/lunajam-join?code=K7M4P9Q2&server=${encodeURIComponent('https://lunajam.sn0w13.de')}`,
+      {
+        method: 'POST',
+        headers: { 'X-LunaJam-Join': '1', Origin: 'https://lunajam.sn0w13.de' },
+      },
     )
     expect(ok.status).toBe(200)
     expect(await ok.json()).toEqual({ ok: true })

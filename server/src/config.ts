@@ -11,6 +11,8 @@ export interface Config {
   maxConnections: number
   idleTimeoutMs: number
   maxRooms: number
+  roomsPerConn: number
+  maxConnsPerIp: number
 }
 
 function intEnv(name: string, fallback: number, min = 1): number {
@@ -33,5 +35,7 @@ export function loadConfig(): Config {
     maxConnections: intEnv('LUNAJAM_MAX_CONNECTIONS', 512),
     idleTimeoutMs: intEnv('LUNAJAM_IDLE_MS', 90000, 1000),
     maxRooms: intEnv('LUNAJAM_MAX_ROOMS', 256),
+    roomsPerConn: intEnv('LUNAJAM_ROOMS_PER_CONN', 4, 1),
+    maxConnsPerIp: intEnv('LUNAJAM_MAX_CONNS_PER_IP', 24, 1),
   }
 }

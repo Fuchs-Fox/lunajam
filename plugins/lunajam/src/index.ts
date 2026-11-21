@@ -4,6 +4,7 @@ import styles from 'file://ui/styles.css?minify'
 import { DiscordPresenceController } from './discord/presence'
 import type { AudioMode, RoomSnapshot } from './protocol'
 import { SessionClient } from './session/client'
+import { normalizeServerUrl } from './session/settings'
 import { hydrateLocalIdentity, localProfile } from './tidal/identity'
 import { ensureQueueInStore, findMissingMetadata } from './tidal/metadata'
 import { TidalPlaybackBridge } from './tidal/playback'
@@ -28,6 +29,7 @@ const attemptedMeta = new Set<string>()
 let lastRoomCode: string | null = null
 let lastParticipantCount = 0
 let lastAppliedQueueKey = ''
+let lastPreloadedKey = ''
 
 function queueKey(room: RoomSnapshot): string {
   return `${room.currentIndex}:${room.queue.map((t) => `${t.uid}:${t.trackId}`).join(',')}`
@@ -183,10 +185,11 @@ const popover = new PopoverController({
 new FooterButtonMount(unloads, session, popover, queueHeader)
 
 new DiscordPresenceController(unloads, session, {
-  onJoinLink: (token, serverUrl) => {
+  onJoinLink: (token) => {
     const mode = storage.get().defaultGuestAudioMode
+    const configuredServer = normalizeServerUrl(storage.get().serverUrl)
     showToast('Joining Jam from link')
-    joinJam(token, mode, serverUrl).catch(() => {})
+    joinJam(token, mode, configuredServer).catch(() => {})
   },
 })
 
@@ -219,6 +222,7 @@ unloads.add(
         lastRoomCode = null
         lastParticipantCount = 0
         lastAppliedQueueKey = ''
+        lastPreloadedKey = ''
         attemptedMeta.clear()
         queueSync.clearMappings()
         playback.resetSync()
@@ -252,6 +256,10 @@ unloads.add(
     }
 
     queueAvatars.refresh()
+
+    const preloadKey = `${key}|${room.playback?.trackId ?? ''}`
+    if (preloadKey === lastPreloadedKey) return
+    lastPreloadedKey = preloadKey
 
     ensureQueueInStore(
       room.queue.map((t) => t.trackId),

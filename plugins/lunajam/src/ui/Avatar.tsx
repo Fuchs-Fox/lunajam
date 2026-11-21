@@ -34,7 +34,11 @@ export const Avatar: FC<{
       }}
       title={onClick ? undefined : profile.name}
     >
-      {profile.avatarUrl ? <img src={profile.avatarUrl} alt={profile.name} /> : initialsFor(profile.name)}
+      {profile.avatarUrl ? (
+        <img src={profile.avatarUrl} alt={profile.name} referrerPolicy="no-referrer" decoding="async" />
+      ) : (
+        initialsFor(profile.name)
+      )}
     </span>
   )
 

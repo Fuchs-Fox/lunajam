@@ -166,6 +166,21 @@ export async function buildPresenceActivity(opts: {
   })
 }
 
+function activitySignature(clientId: string, a: WireActivity): string {
+  return JSON.stringify([
+    clientId,
+    a.name ?? '',
+    a.details ?? '',
+    a.state ?? '',
+    a.assets?.large_image ?? '',
+    a.assets?.large_text ?? '',
+    a.assets?.small_image ?? '',
+    a.party?.id ?? '',
+    a.party?.size ?? null,
+    a.buttons ?? [],
+  ])
+}
+
 export class DiscordPresenceController {
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
   private pollTimer: ReturnType<typeof setInterval> | null = null
@@ -173,6 +188,8 @@ export class DiscordPresenceController {
   private rerunRequested = false
   private disposed = false
   private lastStandbyTrackKey = ''
+  private lastSentSig = ''
+  private lastSentStartMs = 0
 
   constructor(
     unloads: Set<LunaUnload>,
@@ -239,6 +256,8 @@ export class DiscordPresenceController {
 
       if (!cfg.discordRpcEnabled) {
         if (!state.room) this.session.closeStandby()
+        this.lastSentSig = ''
+        this.lastSentStartMs = 0
         await rpcDisconnect()
         return
       }
@@ -246,11 +265,26 @@ export class DiscordPresenceController {
       const activePayload = await this.buildActivity(state, cfg.discordListenTogether, cfg.discordShowPaused, cfg.discordClientId)
       if (!activePayload) {
         if (!state.room) this.session.closeStandby()
+        this.lastSentSig = ''
+        this.lastSentStartMs = 0
         await rpcSetActivity(cfg.discordClientId, null)
         return
       }
 
-      await rpcSetActivity(cfg.discordClientId, activePayload)
+      const sig = activitySignature(cfg.discordClientId, activePayload)
+      const startMs = activePayload.timestamps?.start ?? 0
+      if (sig === this.lastSentSig && Math.abs(startMs - this.lastSentStartMs) < 2000) {
+        return
+      }
+
+      const res = await rpcSetActivity(cfg.discordClientId, activePayload)
+      if (res.connected) {
+        this.lastSentSig = sig
+        this.lastSentStartMs = startMs
+      } else {
+        this.lastSentSig = ''
+        this.lastSentStartMs = 0
+      }
     } finally {
       this.updating = false
       if (this.rerunRequested && !this.disposed) {

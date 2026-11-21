@@ -231,28 +231,67 @@ function isObj(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x)
 }
 
+const COVER_DOMAINS = ['tidal.com'] as const
+const AVATAR_DOMAINS = [
+  'tidal.com',
+  'gravatar.com',
+  'discordapp.com',
+  'discordapp.net',
+  'githubusercontent.com',
+  'imgur.com',
+  'catbox.moe',
+  'googleusercontent.com',
+  'twimg.com',
+  'bsky.app',
+] as const
+
+function sanitizeText(raw: string): string {
+  let out = ''
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw.charCodeAt(i)
+    if ((c >= 0x20 && c < 0x7f) || (c > 0x9f && (c < 0x202a || c > 0x202e) && (c < 0x2066 || c > 0x2069))) {
+      out += raw[i]
+    }
+  }
+  return out.trim()
+}
+
 function str(x: unknown, max: number): string | null {
   if (typeof x !== 'string') return null
-  const t = x.trim()
+  const t = sanitizeText(x)
   return t.length > 0 && t.length <= max ? t : null
 }
 
 function optStr(x: unknown, max: number): string | undefined {
   if (x === undefined || x === null) return undefined
   if (typeof x !== 'string') return undefined
-  const t = x.trim()
+  const t = sanitizeText(x)
   return t.length <= max ? t : t.slice(0, max)
 }
 
-function safeImageUrl(x: unknown): string | null {
+function matchesDomain(host: string, allowed: readonly string[]): boolean {
+  const h = host.toLowerCase()
+  return allowed.some((d) => h === d || h.endsWith(`.${d}`))
+}
+
+function safeHttpsUrl(x: unknown, allowedDomains: readonly string[]): string | null {
   if (x === null || x === undefined || x === '') return null
   if (typeof x !== 'string' || x.length > 512) return null
   try {
-    const u = new URL(x)
-    return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : null
+    const u = new URL(x.trim())
+    if (u.protocol !== 'https:' || u.username || u.password || u.port) return null
+    return matchesDomain(u.hostname, allowedDomains) ? u.href : null
   } catch {
     return null
   }
+}
+
+function safeCoverUrl(x: unknown): string | null {
+  return safeHttpsUrl(x, COVER_DOMAINS)
+}
+
+function safeAvatarUrl(x: unknown): string | null {
+  return safeHttpsUrl(x, AVATAR_DOMAINS)
 }
 
 function fin(x: unknown, min = 0, max = 1e14): number | null {
@@ -278,7 +317,7 @@ function parseProfile(x: unknown): Profile | null {
   return {
     cid,
     name,
-    avatarUrl: safeImageUrl(x.avatarUrl),
+    avatarUrl: safeAvatarUrl(x.avatarUrl),
     ...(tidalUserId ? { tidalUserId } : {}),
     ...(profilePath ? { profilePath } : {}),
   }
@@ -291,7 +330,7 @@ function parseQueueInput(x: unknown): QueueTrackInput | null {
   const title = optStr(x.title, 200) ?? ''
   const artist = optStr(x.artist, 200) ?? ''
   const album = optStr(x.album, 200)
-  const coverUrl = safeImageUrl(x.coverUrl) ?? undefined
+  const coverUrl = safeCoverUrl(x.coverUrl) ?? undefined
   const durationSec = typeof x.durationSec === 'number' && Number.isFinite(x.durationSec) && x.durationSec >= 0 && x.durationSec <= 86400 ? x.durationSec : undefined
   return { trackId, title, artist, ...(album ? { album } : {}), ...(coverUrl ? { coverUrl } : {}), ...(durationSec !== undefined ? { durationSec } : {}) }
 }
@@ -417,7 +456,7 @@ function parseMetaUpdate(x: unknown): TrackMetaUpdate | null {
   const artist = optStr(x.artist, 200) ?? ''
   if (!trackId || !title) return null
   const album = optStr(x.album, 200)
-  const coverUrl = safeImageUrl(x.coverUrl) ?? undefined
+  const coverUrl = safeCoverUrl(x.coverUrl) ?? undefined
   const durationSec = typeof x.durationSec === 'number' && Number.isFinite(x.durationSec) && x.durationSec >= 0 && x.durationSec <= 86400 ? x.durationSec : undefined
   return { trackId, title, artist, ...(album ? { album } : {}), ...(coverUrl ? { coverUrl } : {}), ...(durationSec !== undefined ? { durationSec } : {}) }
 }
