@@ -1,0 +1,19 @@
+{
+  "0": "Native UI Integration",
+  "1": "Discord RPC & Build",
+  "2": "Plugin Orchestration & Discord",
+  "4": "Relay Server Rooms",
+  "8": "Docker & Server Deployment",
+  "10": "Test Mocks & Fixtures",
+  "11": "Runtime Package Config",
+  "12": "Dev Dependencies Config",
+  "13": "Plugin Manifest Config",
+  "14": "TypeScript Config",
+  "15": "ESLint Config",
+  "16": "NPM Scripts Config",
+  "18": "Luna Build Plugin",
+  "19": "Package Author Metadata",
+  "20": "ESLint Dependency",
+  "24": "React Types",
+  "26": "TypeScript Dependency"
+}

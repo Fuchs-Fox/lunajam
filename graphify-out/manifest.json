@@ -1,0 +1,296 @@
+{
+  "build-server.mjs": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "f0246bb46e902637ca2de05d564f8c60",
+    "semantic_hash": "f0246bb46e902637ca2de05d564f8c60"
+  },
+  "devserve.mjs": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "924925985b13c63c7019296852f4bbe2",
+    "semantic_hash": "924925985b13c63c7019296852f4bbe2"
+  },
+  "docker-compose.yml": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "a5c139e2dd06196d96d21833c8125c08",
+    "semantic_hash": "a5c139e2dd06196d96d21833c8125c08"
+  },
+  "esbuild.config.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "0472bab8da16ba280a35037516f2b668",
+    "semantic_hash": "0472bab8da16ba280a35037516f2b668"
+  },
+  "eslint.config.mjs": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "a34468269512248e48934dbadbce648d",
+    "semantic_hash": "a34468269512248e48934dbadbce648d"
+  },
+  "package.json": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "611bcc5f7f52da19fdb4419399c284ec",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/package.json": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "14e7a1ac14e71f069217486f342c23ef",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/discord/loopback.native.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "a30836d7ce38571e3e4f8b5e7750a7b3",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/discord/presence.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "1f9975b4b3c0e879fefc66cc19b7d006",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/discord/rpc.native.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "5996c19c7c6266991d4a70e310f51a3c",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/discord/types.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "619b72e5e5c80485d348acb3057ed0dd",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/index.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "6136b37568df324fa2d8ade2d1706c62",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/protocol.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "a3aa33a767497cd2a37f5abeb718a57c",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/session/client.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "c44d923f0d760110720452c852781b9b",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/session/settings.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "b2ca0eee88207b9518999de8166877fb",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/sync/clock.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "38c7bf3c4b529c1aecd48d5f23ccfa20",
+    "semantic_hash": "38c7bf3c4b529c1aecd48d5f23ccfa20"
+  },
+  "plugins/lunajam/src/sync/drift.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "788eaa38c9704ef22e323d89294411a8",
+    "semantic_hash": "788eaa38c9704ef22e323d89294411a8"
+  },
+  "plugins/lunajam/src/tidal/identity.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "cfad3ee0878f706c796229fca47274a2",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/tidal/metadata.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "4efa1393e7ef80e8859e337f8f70f347",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/tidal/playback.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "d6b743142e013017fd6dc4dcfb38de3f",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/tidal/queueSync.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "58d41d19b0c63562c054cfe3bebfeda3",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/tidal/storage.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "2abcc2baeb198c2f22abde5f71a0343b",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/ui/Avatar.tsx": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "126c0e513e6901033994081c921ad07b",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/ui/JamBody.tsx": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "e5a358f1e945c084dc02dcd2cb7285e4",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/ui/footerButton.tsx": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "f651ba20283afac25c6f37bbde3c4171",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/ui/icons.tsx": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "2930542a1821c3cbe3765e846a2a75d4",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/ui/popover.tsx": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "8489a3a41ca2acad75548b2974e1fa98",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/ui/queueAvatars.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "ba6702da12930c1f252abc9fd0408ee2",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/ui/queueHeader.tsx": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "0e07ea44e5620596d4542fb3b990304e",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/ui/settings.tsx": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "7f27078e8d744f0e3bb568a524c48eb8",
+    "semantic_hash": ""
+  },
+  "plugins/lunajam/src/ui/toast.tsx": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "9a57da3ab878d79575372d72e74b0f56",
+    "semantic_hash": "9a57da3ab878d79575372d72e74b0f56"
+  },
+  "server/src/config.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "c15b34c4daf78f94a0f5d61ab715a3a8",
+    "semantic_hash": ""
+  },
+  "server/src/hub.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "8b1f1c1aba0aeec9d57ca11c02753dc7",
+    "semantic_hash": ""
+  },
+  "server/src/joinPage.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "bc89ba2886aef4e1c887165f7fb06320",
+    "semantic_hash": ""
+  },
+  "server/src/main.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "5aba26f5bb53f944372210e4b8a7f670",
+    "semantic_hash": ""
+  },
+  "server/src/rooms.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "0170a53ca1497b482e415d7a995f9019",
+    "semantic_hash": ""
+  },
+  "test/discord.test.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "effc2cf5a1635b63dbaf6a8343aa1c35",
+    "semantic_hash": ""
+  },
+  "test/helpers/lunaMock.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "5c21a879e7e01a75706f8b4f4120bf5f",
+    "semantic_hash": ""
+  },
+  "test/protocol.test.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "d86328f55861fc3d9691b24936c25621",
+    "semantic_hash": ""
+  },
+  "test/server.test.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "59217c36329d7d6fda23db0d07f79b89",
+    "semantic_hash": ""
+  },
+  "test/sync.test.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "aa61ba5c8237337e6096e5cceee797ab",
+    "semantic_hash": "aa61ba5c8237337e6096e5cceee797ab"
+  },
+  "test/ui-dom.test.tsx": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "3480428f324fc50140426dfafad4e2fe",
+    "semantic_hash": ""
+  },
+  "tsconfig.json": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "38ff664d362cb17d9eb7a4690dd2f44c",
+    "semantic_hash": "38ff664d362cb17d9eb7a4690dd2f44c"
+  },
+  "vitest.config.ts": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "1e99f8b5bcdb64c0cbcfd610d0bf1ebe",
+    "semantic_hash": "1e99f8b5bcdb64c0cbcfd610d0bf1ebe"
+  },
+  "plugins/lunajam/src/ui/participantMenu.tsx": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "c97ce424c3980b4b889287446d5d6c72",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "deea08b190e9d6c0b44b864e63c1fceb",
+    "semantic_hash": ""
+  },
+  "docs/ARCHITECTURE.md": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "89bfb3eec8a49cc4215c7093edc5e9e1",
+    "semantic_hash": ""
+  },
+  "assets/banner.svg": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "b924d0a05af793d43a0a00ba55817afc",
+    "semantic_hash": ""
+  },
+  "package-lock.json": {
+    "mtime": 0,
+    "seen": 0,
+    "ast_hash": "76320269a8fcf34cc956d61676914948",
+    "semantic_hash": ""
+  }
+}

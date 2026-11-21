@@ -437,13 +437,13 @@ describe('relay server v2', () => {
       album: `Album Release Collection ${i}`,
       coverUrl: `https://resources.tidal.com/images/5e52c0d2/63fe/43eb/9ab4/0786df7dbef${i % 10}/320x320.jpg`,
       durationSec: 180 + i,
-      addedBy: { cid: '', name: 'snowie', avatarUrl: null, tidalUserId: '208483729' },
+      addedBy: { cid: '', name: 'HostUser', avatarUrl: null, tidalUserId: '100200300' },
     }))
     const payloadBytes = Buffer.byteLength(
       JSON.stringify({
         v: 2,
         t: 'room.create',
-        profile: { cid: '', name: 'snowie', avatarUrl: null, tidalUserId: '208483729' },
+        profile: { cid: '', name: 'HostUser', avatarUrl: null, tidalUserId: '100200300' },
         allowGuestControl: true,
         allowGuestAdd: true,
         queue,
@@ -456,7 +456,7 @@ describe('relay server v2', () => {
     host.send({
       v: 2,
       t: 'room.create',
-      profile: { cid: '', name: 'snowie', avatarUrl: null, tidalUserId: '208483729' },
+      profile: { cid: '', name: 'HostUser', avatarUrl: null, tidalUserId: '100200300' },
       allowGuestControl: true,
       allowGuestAdd: true,
       queue,

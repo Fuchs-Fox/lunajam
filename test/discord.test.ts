@@ -182,14 +182,14 @@ describe('Discord native RPC & loopback bridge', () => {
   it('includes Flatpak Equibop and Vesktop xdg-run IPC paths in Linux socket candidates', () => {
     if (process.platform === 'win32') return
     const prev = process.env.XDG_RUNTIME_DIR
-    process.env.XDG_RUNTIME_DIR = '/run/user/1001'
+    process.env.XDG_RUNTIME_DIR = '/run/user/1000'
     try {
       const candidates = candidateSockets()
-      expect(candidates[0]).toBe('/run/user/1001/lunajam-ipc-0')
-      expect(candidates.indexOf('/run/user/1001/lunajam-ipc-0')).toBeLessThan(candidates.indexOf('/run/user/1001/discord-ipc-0'))
-      expect(candidates).toContain('/run/user/1001/.flatpak/org.equicord.equibop/xdg-run/discord-ipc-0')
-      expect(candidates).toContain('/run/user/1001/.flatpak/dev.vencord.Vesktop/xdg-run/discord-ipc-0')
-      expect(candidates).toContain('/run/user/1001/discord-ipc-0')
+      expect(candidates[0]).toBe('/run/user/1000/lunajam-ipc-0')
+      expect(candidates.indexOf('/run/user/1000/lunajam-ipc-0')).toBeLessThan(candidates.indexOf('/run/user/1000/discord-ipc-0'))
+      expect(candidates).toContain('/run/user/1000/.flatpak/org.equicord.equibop/xdg-run/discord-ipc-0')
+      expect(candidates).toContain('/run/user/1000/.flatpak/dev.vencord.Vesktop/xdg-run/discord-ipc-0')
+      expect(candidates).toContain('/run/user/1000/discord-ipc-0')
     } finally {
       if (prev === undefined) delete process.env.XDG_RUNTIME_DIR
       else process.env.XDG_RUNTIME_DIR = prev
