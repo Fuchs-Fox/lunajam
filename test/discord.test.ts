@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import * as path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { WebSocketServer } from 'ws'
-import { drainLoopbackJoins, startLoopback, stopLoopback } from '../plugins/lunajam/src/discord/loopback.native'
+import { drainLoopbackJoins, setLoopbackAllowedOrigins, startLoopback, stopLoopback } from '../plugins/lunajam/src/discord/loopback.native'
 import { buildPresenceActivity } from '../plugins/lunajam/src/discord/presence'
 import { candidateSockets, rpcDisconnect, rpcSetActivity } from '../plugins/lunajam/src/discord/rpc.native'
 import type { SessionState } from '../plugins/lunajam/src/session/client'
@@ -177,6 +177,62 @@ describe('Discord native RPC & loopback bridge', () => {
     const joins = await drainLoopbackJoins()
     expect(joins).toEqual([{ code: 'K7M4P9Q2', serverUrl: 'https://lunajam.sn0w13.de' }])
     expect(await drainLoopbackJoins()).toEqual([])
+  })
+
+  it('rejects untrusted CORS origins and arbitrary ?server= targets on loopback bridge', async () => {
+    await stopLoopback()
+    const port = await startLoopback([0])
+    expect(port).toBeTypeOf('number')
+    try {
+      const preflightEvil = await fetch(`http://127.0.0.1:${port}/lunajam-join?code=K7M4P9Q2`, {
+        method: 'OPTIONS',
+        headers: { Origin: 'https://evil.example' },
+      })
+      expect(preflightEvil.status).toBe(403)
+      expect(preflightEvil.headers.get('access-control-allow-origin')).toBeNull()
+
+      const postEvil = await fetch(`http://127.0.0.1:${port}/lunajam-join?code=K7M4P9Q2`, {
+        method: 'POST',
+        headers: {
+          Origin: 'https://evil.example',
+          'X-LunaJam-Join': '1',
+        },
+      })
+      expect(postEvil.status).toBe(403)
+      expect(postEvil.headers.get('access-control-allow-origin')).toBeNull()
+
+      const evilServer = await fetch(
+        `http://127.0.0.1:${port}/lunajam-join?code=K7M4P9Q2&server=${encodeURIComponent('https://evil.example')}`,
+        {
+          method: 'POST',
+          headers: {
+            Origin: 'https://lunajam.sn0w13.de',
+            'X-LunaJam-Join': '1',
+          },
+        },
+      )
+      expect(evilServer.status).toBe(403)
+
+      await setLoopbackAllowedOrigins(['https://custom.jam.example'])
+      const customOk = await fetch(
+        `http://127.0.0.1:${port}/lunajam-join?code=K7M4P9Q2&server=${encodeURIComponent('https://custom.jam.example')}`,
+        {
+          method: 'POST',
+          headers: {
+            Origin: 'https://custom.jam.example',
+            'X-LunaJam-Join': '1',
+          },
+        },
+      )
+      expect(customOk.status).toBe(200)
+      expect(customOk.headers.get('access-control-allow-origin')).toBe('https://custom.jam.example')
+
+      expect(await drainLoopbackJoins()).toEqual([
+        { code: 'K7M4P9Q2', serverUrl: 'https://custom.jam.example' },
+      ])
+    } finally {
+      await stopLoopback()
+    }
   })
 
   it('includes Flatpak Equibop and Vesktop xdg-run IPC paths in Linux socket candidates', () => {

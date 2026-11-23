@@ -9,7 +9,16 @@ function escapeHtml(raw: string): string {
     .replace(/'/g, '&#39;')
 }
 
-export function renderJoinPage(summary: ResolveSummary | null, publicOrigin: string): string {
+function safeJsonForScript(val: unknown): string {
+  return JSON.stringify(val)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
+}
+
+export function renderJoinPage(summary: ResolveSummary | null, publicOrigin: string, nonce = ''): string {
   if (!summary) {
     return `<!doctype html>
 <html lang="en">
@@ -83,12 +92,12 @@ ${coverHtml}
 </div>
 <p class="status" id="status-line">Connecting to TidaLuna on this device...</p>
 </main>
-<script>
+<script${nonce ? ` nonce="${escapeHtml(nonce)}"` : ''}>
 (function(){
-  var code=${JSON.stringify(summary.code)};
-  var formatted=${JSON.stringify(formattedCode)};
-  var server=${JSON.stringify(publicOrigin)};
-  var deepLink=${JSON.stringify(deepLink)};
+  var code=${safeJsonForScript(summary.code)};
+  var formatted=${safeJsonForScript(formattedCode)};
+  var server=${safeJsonForScript(publicOrigin)};
+  var deepLink=${safeJsonForScript(deepLink)};
   var statusEl=document.getElementById("status-line");
   var copyBtn=document.getElementById("copy-btn");
   copyBtn.addEventListener("click",function(){

@@ -41,6 +41,10 @@ describe('protocol v2', () => {
       token: 'K7M4P9Q2',
       serverUrl: undefined,
     })
+    expect(parseJoinTarget('https://lunajam.sn0w13.de/join/K7M4P9Q2?server=https://evil.example')).toEqual({
+      token: 'K7M4P9Q2',
+      serverUrl: undefined,
+    })
     expect(parseJoinTarget('invalid')).toBeNull()
   })
 
@@ -202,5 +206,39 @@ describe('protocol v2', () => {
     expect(coverCheck.tracks[0]!.title).toBe('Song')
     expect(coverCheck.tracks[0]!.coverUrl).toBeUndefined()
     expect(coverCheck.tracks[1]!.coverUrl).toBe('https://resources.tidal.com/images/ok/320x320.jpg')
+  })
+
+  it('preserves multi-platform cover domains while stripping untrusted cover origins', () => {
+    const msg = decodeClient(
+      JSON.stringify({
+        v: 2,
+        t: 'queue.add',
+        insert: 'last',
+        tracks: [
+          {
+            trackId: '1',
+            title: 'Track 1',
+            artist: 'Artist 1',
+            coverUrl: 'https://i.scdn.co/image/ab67616d0000b273',
+          },
+          {
+            trackId: '2',
+            title: 'Track 2',
+            artist: 'Artist 2',
+            coverUrl: 'https://i.ytimg.com/vi/abc123/hqdefault.jpg',
+          },
+          {
+            trackId: '3',
+            title: 'Track 3',
+            artist: 'Artist 3',
+            coverUrl: 'https://evil.example/cover.jpg',
+          },
+        ],
+      }),
+    )
+    if (msg?.t !== 'queue.add') throw new Error('expected queue.add')
+    expect(msg.tracks[0]!.coverUrl).toBe('https://i.scdn.co/image/ab67616d0000b273')
+    expect(msg.tracks[1]!.coverUrl).toBe('https://i.ytimg.com/vi/abc123/hqdefault.jpg')
+    expect(msg.tracks[2]!.coverUrl).toBeUndefined()
   })
 })

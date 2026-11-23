@@ -2289,7 +2289,7 @@ var require_websocket = __commonJS({
     var net = __require("net");
     var querystring = __require("querystring");
     var tls = __require("tls");
-    var { randomBytes: randomBytes2, createHash: createHash2 } = __require("crypto");
+    var { randomBytes: randomBytes3, createHash: createHash2 } = __require("crypto");
     var { Duplex, Readable } = __require("stream");
     var { URL: URL2 } = __require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -2839,7 +2839,7 @@ var require_websocket = __commonJS({
         }
       }
       const defaultPort = isSecure ? 443 : 80;
-      const key = randomBytes2(16).toString("base64");
+      const key = randomBytes3(16).toString("base64");
       const request = isSecure ? https.request : http.request;
       const protocolSet = /* @__PURE__ */ new Set();
       let perMessageDeflate;
@@ -3773,7 +3773,25 @@ function encode(msg) {
 function isObj(x) {
   return typeof x === "object" && x !== null && !Array.isArray(x);
 }
-var COVER_DOMAINS = ["tidal.com"];
+var COVER_DOMAINS = [
+  "tidal.com",
+  "scdn.co",
+  "spotifycdn.com",
+  "sndcdn.com",
+  "ytimg.com",
+  "ggpht.com",
+  "googleusercontent.com",
+  "mzstatic.com",
+  "dzcdn.net",
+  "bcbits.com",
+  "coverartarchive.org",
+  "archive.org",
+  "discordapp.com",
+  "discordapp.net",
+  "githubusercontent.com",
+  "imgur.com",
+  "catbox.moe"
+];
 var AVATAR_DOMAINS = [
   "tidal.com",
   "gravatar.com",
@@ -4081,6 +4099,14 @@ function intEnv(name, fallback, min = 1) {
   const n = Number.parseInt(raw, 10);
   return Number.isFinite(n) && n >= min ? n : fallback;
 }
+function boolEnv(name, fallback) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const norm = raw.trim().toLowerCase();
+  if (norm === "0" || norm === "false" || norm === "no") return false;
+  if (norm === "1" || norm === "true" || norm === "yes") return true;
+  return fallback;
+}
 function loadConfig() {
   const publicUrl = (process.env.LUNAJAM_PUBLIC_URL ?? DEFAULT_SERVER_URL).trim().replace(/\/+$/, "") || DEFAULT_SERVER_URL;
   return {
@@ -4095,12 +4121,13 @@ function loadConfig() {
     idleTimeoutMs: intEnv("LUNAJAM_IDLE_MS", 9e4, 1e3),
     maxRooms: intEnv("LUNAJAM_MAX_ROOMS", 256),
     roomsPerConn: intEnv("LUNAJAM_ROOMS_PER_CONN", 4, 1),
-    maxConnsPerIp: intEnv("LUNAJAM_MAX_CONNS_PER_IP", 24, 1)
+    maxConnsPerIp: intEnv("LUNAJAM_MAX_CONNS_PER_IP", 24, 1),
+    trustProxy: boolEnv("LUNAJAM_TRUST_PROXY", true)
   };
 }
 
 // server/src/hub.ts
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { isIP } from "node:net";
 
@@ -4118,7 +4145,10 @@ var import_websocket_server = __toESM(require_websocket_server(), 1);
 function escapeHtml(raw) {
   return raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
-function renderJoinPage(summary, publicOrigin) {
+function safeJsonForScript(val) {
+  return JSON.stringify(val).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+}
+function renderJoinPage(summary, publicOrigin, nonce = "") {
   if (!summary) {
     return `<!doctype html>
 <html lang="en">
@@ -4188,12 +4218,12 @@ ${coverHtml}
 </div>
 <p class="status" id="status-line">Connecting to TidaLuna on this device...</p>
 </main>
-<script>
+<script${nonce ? ` nonce="${escapeHtml(nonce)}"` : ""}>
 (function(){
-  var code=${JSON.stringify(summary.code)};
-  var formatted=${JSON.stringify(formattedCode)};
-  var server=${JSON.stringify(publicOrigin)};
-  var deepLink=${JSON.stringify(deepLink)};
+  var code=${safeJsonForScript(summary.code)};
+  var formatted=${safeJsonForScript(formattedCode)};
+  var server=${safeJsonForScript(publicOrigin)};
+  var deepLink=${safeJsonForScript(deepLink)};
   var statusEl=document.getElementById("status-line");
   var copyBtn=document.getElementById("copy-btn");
   copyBtn.addEventListener("click",function(){
@@ -4234,9 +4264,14 @@ var MAX_WIRE_BYTES = MAX_MESSAGE_BYTES + 16384;
 var MAX_BUFFERED_BYTES = 2097152;
 var HTTP_RATE_WINDOW_MS = 1e4;
 var HTTP_RATE_LIMIT = 60;
+var MAX_HTTP_RATE_ENTRIES = 4096;
 var BOT_UA_RE = /Discordbot|TelegramBot|Slackbot|Twitterbot|WhatsApp|facebookexternalhit|LinkedInBot|Embedly|crawler|spider|preview/i;
 var RFC1918_172_RE = /^172\.(1[6-9]|2\d|3[01])\./;
-var JOIN_CSP = "default-src 'none'; img-src https://resources.tidal.com https://*.tidal.com; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src http://127.0.0.1:*; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+var COVER_IMG_SRC = ["https://resources.tidal.com", ...COVER_DOMAINS.map((d) => `https://${d} https://*.${d}`)].join(" ");
+function buildJoinCsp(nonce) {
+  const scriptSrc = nonce ? `'nonce-${nonce}'` : "'none'";
+  return `default-src 'none'; img-src ${COVER_IMG_SRC}; style-src 'unsafe-inline'; script-src ${scriptSrc}; connect-src http://127.0.0.1:*; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+}
 var BASE_SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
@@ -4257,13 +4292,55 @@ function parseCandidateIp(raw) {
   s = s.replace(/^::ffff:/, "");
   return isIP(s) !== 0 ? s : null;
 }
-function extractClientIp(req) {
+function expandIpv6Words(ip) {
+  const parts = ip.split("::");
+  if (parts.length > 2) return null;
+  const parseSide = (raw) => {
+    if (!raw) return [];
+    const tokens = raw.split(":");
+    const out = [];
+    for (let i = 0; i < tokens.length; i++) {
+      const tok = tokens[i];
+      if (tok.includes(".")) {
+        if (i !== tokens.length - 1 || isIP(tok) !== 4) return null;
+        const octets = tok.split(".").map((o) => Number.parseInt(o, 10));
+        if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255)) return null;
+        out.push(octets[0] << 8 | octets[1], octets[2] << 8 | octets[3]);
+      } else {
+        if (!/^[0-9a-fA-F]{1,4}$/.test(tok)) return null;
+        out.push(Number.parseInt(tok, 16));
+      }
+    }
+    return out;
+  };
+  const left = parseSide(parts[0] ?? "");
+  if (!left) return null;
+  if (parts.length === 1) {
+    return left.length === 8 ? left : null;
+  }
+  const right = parseSide(parts[1] ?? "");
+  if (!right) return null;
+  const missing = 8 - (left.length + right.length);
+  if (missing < 1) return null;
+  return [...left, ...Array(missing).fill(0), ...right];
+}
+function normalizeIpKey(rawIp) {
+  const s = rawIp.trim().replace(/^::ffff:/, "");
+  const ver = isIP(s);
+  if (ver === 4) return s;
+  if (ver === 6) {
+    const words = expandIpv6Words(s);
+    if (!words) return s.toLowerCase();
+    if (words[0] === 0 && words[1] === 0 && words[2] === 0 && words[3] === 0 && words[4] === 0 && words[5] === 0 && words[6] === 0 && words[7] === 1) {
+      return "::1";
+    }
+    return `${words.slice(0, 4).map((w) => w.toString(16).padStart(4, "0")).join(":")}::/64`;
+  }
+  return s;
+}
+function extractClientIp(req, trustProxy = true) {
   const cleanRemote = (req.socket.remoteAddress ?? "").replace(/^::ffff:/, "");
-  if (isTrustedProxyRemote(cleanRemote)) {
-    const xReal = req.headers["x-real-ip"];
-    const realStr = Array.isArray(xReal) ? xReal[0] : xReal;
-    const parsedReal = realStr ? parseCandidateIp(realStr) : null;
-    if (parsedReal) return parsedReal;
+  if (trustProxy && isTrustedProxyRemote(cleanRemote)) {
     const fwd = req.headers["x-forwarded-for"];
     const fwdRaw = Array.isArray(fwd) ? fwd[fwd.length - 1] : fwd;
     if (fwdRaw) {
@@ -4272,11 +4349,11 @@ function extractClientIp(req) {
         const seg = parts[i].trim();
         if (!seg) continue;
         const candidate = parseCandidateIp(seg);
-        return candidate ?? cleanRemote;
+        return normalizeIpKey(candidate ?? cleanRemote);
       }
     }
   }
-  return cleanRemote;
+  return normalizeIpKey(cleanRemote);
 }
 function safeDecodeSegment(raw) {
   if (!raw || raw.length > 96) return null;
@@ -4310,7 +4387,7 @@ var Hub = class {
     this.server.requestTimeout = 1e4;
     this.server.keepAliveTimeout = 5e3;
     this.server.on("upgrade", (req, socket, head) => {
-      const ip = extractClientIp(req);
+      const ip = extractClientIp(req, this.cfg.trustProxy ?? true);
       if (this.conns.size >= this.cfg.maxConnections) {
         socket.write("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
         socket.destroy();
@@ -4354,6 +4431,9 @@ var Hub = class {
   }
   peerIp(cid) {
     return this.conns.get(cid)?.ip;
+  }
+  getHttpRateSize() {
+    return this.httpRate.size;
   }
   send(cid, msg) {
     const conn = this.conns.get(cid);
@@ -4400,7 +4480,23 @@ var Hub = class {
   allowHttp(ip) {
     const now = Date.now();
     let entry2 = this.httpRate.get(ip);
-    if (!entry2 || now - entry2.windowStart >= HTTP_RATE_WINDOW_MS) {
+    if (entry2 && now - entry2.windowStart >= HTTP_RATE_WINDOW_MS) {
+      this.httpRate.delete(ip);
+      entry2 = void 0;
+    }
+    if (!entry2) {
+      if (this.httpRate.size >= MAX_HTTP_RATE_ENTRIES) {
+        for (const [k, existing] of this.httpRate) {
+          if (now - existing.windowStart >= HTTP_RATE_WINDOW_MS) {
+            this.httpRate.delete(k);
+          }
+        }
+        while (this.httpRate.size >= MAX_HTTP_RATE_ENTRIES) {
+          const oldest = this.httpRate.keys().next().value;
+          if (oldest === void 0) break;
+          this.httpRate.delete(oldest);
+        }
+      }
       entry2 = { windowStart: now, count: 0 };
       this.httpRate.set(ip, entry2);
     }
@@ -4441,7 +4537,7 @@ var Hub = class {
       return;
     }
     if (urlPath.startsWith("/api/resolve/")) {
-      const ip = extractClientIp(req);
+      const ip = extractClientIp(req, this.cfg.trustProxy ?? true);
       const jsonHeaders = {
         ...BASE_SECURITY_HEADERS,
         "content-type": "application/json; charset=utf-8",
@@ -4466,26 +4562,32 @@ var Hub = class {
       return;
     }
     if (urlPath.startsWith("/join/")) {
-      const ip = extractClientIp(req);
-      const htmlHeaders = {
-        ...BASE_SECURITY_HEADERS,
-        "content-security-policy": JOIN_CSP,
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "no-store"
-      };
+      const ip = extractClientIp(req, this.cfg.trustProxy ?? true);
       if (!this.allowHttp(ip)) {
         res.writeHead(429, { ...BASE_SECURITY_HEADERS, "content-type": "text/plain", "retry-after": "10" }).end("too many requests");
         return;
       }
       const token = safeDecodeSegment(urlPath.slice("/join/".length));
       if (!token) {
-        res.writeHead(400, htmlHeaders).end(renderJoinPage(null, this.cfg.publicUrl));
+        res.writeHead(400, {
+          ...BASE_SECURITY_HEADERS,
+          "content-security-policy": buildJoinCsp(),
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store"
+        }).end(renderJoinPage(null, this.cfg.publicUrl));
         return;
       }
       const ua = String(req.headers["user-agent"] ?? "");
       const isPreview = method === "HEAD" || BOT_UA_RE.test(ua);
       const summary = isPreview ? this.handler?.peekToken(token) ?? null : this.handler?.resolveToken(token) ?? null;
-      res.writeHead(summary ? 200 : 404, htmlHeaders).end(method === "HEAD" ? void 0 : renderJoinPage(summary, this.cfg.publicUrl));
+      const nonce = summary ? randomBytes(16).toString("base64") : void 0;
+      const htmlHeaders = {
+        ...BASE_SECURITY_HEADERS,
+        "content-security-policy": buildJoinCsp(nonce),
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store"
+      };
+      res.writeHead(summary ? 200 : 404, htmlHeaders).end(method === "HEAD" ? void 0 : renderJoinPage(summary, this.cfg.publicUrl, nonce));
       return;
     }
     res.writeHead(404, {
@@ -4542,18 +4644,18 @@ var Hub = class {
 };
 
 // server/src/rooms.ts
-import { createHash, randomBytes, randomUUID as randomUUID2, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes as randomBytes2, randomUUID as randomUUID2, timingSafeEqual } from "node:crypto";
 function generateRoomCode(existing) {
   for (let attempt = 0; attempt < 32; attempt++) {
-    const bytes = randomBytes(8);
+    const bytes = randomBytes2(8);
     let out = "";
     for (let i = 0; i < 8; i++) out += CROCKFORD_ALPHABET[bytes[i] % CROCKFORD_ALPHABET.length];
     if (!existing.has(out)) return out;
   }
-  return randomBytes(4).toString("hex").toUpperCase();
+  return randomBytes2(4).toString("hex").toUpperCase();
 }
 function generateStandbyId() {
-  return `s_${randomBytes(9).toString("base64url")}`;
+  return `s_${randomBytes2(9).toString("base64url")}`;
 }
 function makeUid() {
   return randomUUID2().replace(/-/g, "").slice(0, 12);

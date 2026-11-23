@@ -6,7 +6,7 @@ import { DEFAULT_DISCORD_CLIENT_ID, normalizeServerUrl } from '../session/settin
 import { localProfile } from '../tidal/identity'
 import { resolveTrackMeta } from '../tidal/metadata'
 import { storage } from '../tidal/storage'
-import { drainLoopbackJoins, startLoopback, stopLoopback } from './loopback.native'
+import { drainLoopbackJoins, setLoopbackAllowedOrigins, startLoopback, stopLoopback } from './loopback.native'
 import { rpcDisconnect, rpcSetActivity } from './rpc.native'
 import type { RpcButton, WireActivity } from './types'
 
@@ -207,13 +207,16 @@ export class DiscordPresenceController {
     const unsubSession = this.session.subscribe(() => this.schedule())
     unloads.add(unsubSession)
 
-    const onSettings = () => this.schedule()
+    const onSettings = () => {
+      setLoopbackAllowedOrigins([normalizeServerUrl(storage.get().serverUrl)]).catch(() => {})
+      this.schedule()
+    }
     storage.onChange(onSettings)
     unloads.add(() => storage.off(onSettings))
 
     ipcRenderer.onOpenUrl(unloads, (rawUrl: string) => this.handleIncomingUri(rawUrl))
 
-    startLoopback().catch(() => null)
+    startLoopback(undefined, [normalizeServerUrl(storage.get().serverUrl)]).catch(() => null)
     this.pollTimer = setInterval(() => {
       drainLoopbackJoins()
         .then((items) => {

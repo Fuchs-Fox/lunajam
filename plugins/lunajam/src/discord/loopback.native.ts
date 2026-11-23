@@ -11,12 +11,28 @@ const MAX_JOIN_BODY_BYTES = 1024
 const RATE_WINDOW_MS = 5000
 const RATE_LIMIT = 8
 const DEFAULT_ORIGIN = 'https://lunajam.sn0w13.de'
+const HUB_ORIGIN = 'https://jam.sn0w13.de'
 
 let server: http.Server | null = null
 let boundPort: number | null = null
 const pendingJoins: LoopbackJoinRequest[] = []
+const allowedOrigins = new Set<string>([DEFAULT_ORIGIN, HUB_ORIGIN])
 let rateWindowStart = 0
 let rateCount = 0
+
+function resetAllowedOrigins(): void {
+  allowedOrigins.clear()
+  allowedOrigins.add(DEFAULT_ORIGIN)
+  allowedOrigins.add(HUB_ORIGIN)
+}
+
+export async function setLoopbackAllowedOrigins(origins: string[]): Promise<void> {
+  resetAllowedOrigins()
+  for (const raw of origins) {
+    const clean = safeOrigin(raw)
+    if (clean) allowedOrigins.add(clean)
+  }
+}
 
 function safeOrigin(raw: string | undefined): string | null {
   if (!raw) return null
@@ -64,37 +80,39 @@ function allowRate(): boolean {
 function tryListen(port: number): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = http.createServer((req, res) => {
-      const reqOriginHeader = typeof req.headers.origin === 'string' ? req.headers.origin : undefined
-      const checkedOrigin = reqOriginHeader ? safeOrigin(reqOriginHeader) : DEFAULT_ORIGIN
-      if (!checkedOrigin) {
-        req.resume()
-        res.writeHead(403, corsHeaders(DEFAULT_ORIGIN)).end(JSON.stringify({ ok: false, error: 'forbidden_origin' }))
-        return
-      }
-
-      const headers = corsHeaders(checkedOrigin)
+      const noCorsJsonHeaders = { 'cache-control': 'no-store', 'content-type': 'application/json' }
       const contentLen = Number.parseInt(String(req.headers['content-length'] ?? '0'), 10)
       if (Number.isFinite(contentLen) && contentLen > MAX_JOIN_BODY_BYTES) {
         req.resume()
-        res.writeHead(413, headers).end(JSON.stringify({ ok: false, error: 'payload_too_large' }))
+        res.writeHead(413, noCorsJsonHeaders).end(JSON.stringify({ ok: false, error: 'payload_too_large' }))
         return
       }
       req.resume()
+
+      if (req.method !== 'OPTIONS' && req.method !== 'POST') {
+        res.writeHead(405, noCorsJsonHeaders).end(JSON.stringify({ ok: false, error: 'method_not_allowed' }))
+        return
+      }
+
+      const reqOriginHeader = typeof req.headers.origin === 'string' ? req.headers.origin : undefined
+      const parsedOrigin = safeOrigin(reqOriginHeader)
+      if (!parsedOrigin || !allowedOrigins.has(parsedOrigin)) {
+        res.writeHead(403, noCorsJsonHeaders).end(JSON.stringify({ ok: false, error: 'forbidden_origin' }))
+        return
+      }
+
+      const headers = corsHeaders(parsedOrigin)
 
       if (req.method === 'OPTIONS') {
         res.writeHead(204, headers).end()
         return
       }
-      if (req.method !== 'POST') {
-        res.writeHead(405, headers).end(JSON.stringify({ ok: false, error: 'method_not_allowed' }))
-        return
-      }
       if (req.headers['x-lunajam-join'] !== '1') {
-        res.writeHead(403, headers).end(JSON.stringify({ ok: false, error: 'missing_header' }))
+        res.writeHead(403, { ...headers, 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: 'missing_header' }))
         return
       }
       if (!allowRate()) {
-        res.writeHead(429, headers).end(JSON.stringify({ ok: false, error: 'rate_limited' }))
+        res.writeHead(429, { ...headers, 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: 'rate_limited' }))
         return
       }
 
@@ -102,12 +120,12 @@ function tryListen(port: number): Promise<number> {
       try {
         parsed = new URL(req.url ?? '/', 'http://127.0.0.1')
       } catch {
-        res.writeHead(400, headers).end(JSON.stringify({ ok: false }))
+        res.writeHead(400, { ...headers, 'content-type': 'application/json' }).end(JSON.stringify({ ok: false }))
         return
       }
 
       if (parsed.pathname !== '/lunajam-join') {
-        res.writeHead(404, headers).end(JSON.stringify({ ok: false }))
+        res.writeHead(404, { ...headers, 'content-type': 'application/json' }).end(JSON.stringify({ ok: false }))
         return
       }
 
@@ -117,7 +135,16 @@ function tryListen(port: number): Promise<number> {
         return
       }
 
-      const serverUrl = safeServerParam(parsed.searchParams.get('server'))
+      let serverUrl: string | undefined
+      if (parsed.searchParams.has('server')) {
+        const candidate = safeServerParam(parsed.searchParams.get('server'))
+        if (!candidate || !allowedOrigins.has(candidate)) {
+          res.writeHead(403, { ...headers, 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: 'forbidden_server' }))
+          return
+        }
+        serverUrl = candidate
+      }
+
       if (pendingJoins.length >= MAX_PENDING_JOINS) pendingJoins.shift()
       pendingJoins.push({ code, ...(serverUrl ? { serverUrl } : {}) })
 
@@ -150,7 +177,10 @@ function tryListen(port: number): Promise<number> {
   })
 }
 
-export async function startLoopback(ports?: number[]): Promise<number | null> {
+export async function startLoopback(ports?: number[], extraOrigins?: string[]): Promise<number | null> {
+  if (extraOrigins) {
+    await setLoopbackAllowedOrigins(extraOrigins)
+  }
   if (server && boundPort !== null) return boundPort
   const candidates = ports ?? [24860, 24861, 24862, 24863, 24864, 24865, 24866, 24867, 24868, 24869]
   for (const port of candidates) {
@@ -173,6 +203,7 @@ export async function stopLoopback(): Promise<void> {
   server = null
   boundPort = null
   pendingJoins.length = 0
+  resetAllowedOrigins()
   rateWindowStart = 0
   rateCount = 0
   if (srv) {

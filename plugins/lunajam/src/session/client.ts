@@ -5,6 +5,7 @@ import {
   isStandbyToken,
   normalizeCode,
   parseJoinTarget,
+  sanitizeBaseUrl,
   type AudioMode,
   type ClientMsg,
   type ControlAction,
@@ -189,7 +190,19 @@ export class SessionClient {
       this.updateState({ error: 'Invalid room code or invite link' })
       return false
     }
-    const serverUrl = normalizeServerUrl(parsed.serverUrl ?? opts.serverUrl)
+    const configuredUrl = normalizeServerUrl(opts.serverUrl)
+    const trustedServers = new Set<string>([DEFAULT_SERVER_URL, 'https://jam.sn0w13.de', configuredUrl])
+    if (parsed.serverUrl !== undefined) {
+      const candidate = sanitizeBaseUrl(parsed.serverUrl)
+      if (!candidate || !trustedServers.has(candidate)) {
+        this.updateState({
+          status: 'idle',
+          error: 'Invite link uses an untrusted Jam server. Change Server URL in Settings first.',
+        })
+        return false
+      }
+    }
+    const serverUrl = normalizeServerUrl(parsed.serverUrl ?? configuredUrl)
     this.clearReconnect()
     this.hostToken = null
     let code = parsed.token

@@ -13,6 +13,7 @@ export interface Config {
   maxRooms: number
   roomsPerConn: number
   maxConnsPerIp: number
+  trustProxy?: boolean
 }
 
 function intEnv(name: string, fallback: number, min = 1): number {
@@ -20,6 +21,15 @@ function intEnv(name: string, fallback: number, min = 1): number {
   if (!raw) return fallback
   const n = Number.parseInt(raw, 10)
   return Number.isFinite(n) && n >= min ? n : fallback
+}
+
+function boolEnv(name: string, fallback: boolean): boolean {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  const norm = raw.trim().toLowerCase()
+  if (norm === '0' || norm === 'false' || norm === 'no') return false
+  if (norm === '1' || norm === 'true' || norm === 'yes') return true
+  return fallback
 }
 
 export function loadConfig(): Config {
@@ -37,5 +47,6 @@ export function loadConfig(): Config {
     maxRooms: intEnv('LUNAJAM_MAX_ROOMS', 256),
     roomsPerConn: intEnv('LUNAJAM_ROOMS_PER_CONN', 4, 1),
     maxConnsPerIp: intEnv('LUNAJAM_MAX_CONNS_PER_IP', 24, 1),
+    trustProxy: boolEnv('LUNAJAM_TRUST_PROXY', true),
   }
 }

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { WebSocket } from 'ws'
 import { decodeServer, encode, type ClientMsg, type ServerMsg } from '../plugins/lunajam/src/protocol'
+import { SessionClient } from '../plugins/lunajam/src/session/client'
+import { Hub, normalizeIpKey } from '../server/src/hub'
 import { startServer } from '../server/src/main'
 
 interface TestClient {
@@ -607,5 +609,236 @@ describe('relay server v2', () => {
     })
     const okJoined = await legitimateGuest.next((m) => m.t === 'room.joined')
     expect(okJoined.t).toBe('room.joined')
+  })
+
+  it('serves /join/:code with per-request nonce CSP, escapes script payloads in publicUrl, and rejects untrusted server links', async () => {
+    const srv = await startServer({
+      port: 0,
+      host: '127.0.0.1',
+      publicUrl: 'https://lunajam.sn0w13.de/foo</script><script>alert(1)</script>',
+      maxParticipants: 32,
+      hostGraceMs: 300,
+      roomTtlMs: 60000,
+      rateLimitPerSec: 120,
+      maxConnections: 64,
+      idleTimeoutMs: 60000,
+      maxRooms: 32,
+      roomsPerConn: 10,
+      maxConnsPerIp: 32,
+    })
+    closers.push(() => srv.close())
+
+    const host = await connectClient(srv.port)
+    closers.push(() => host.close())
+    await host.next((m) => m.t === 'welcome')
+    host.send({
+      v: 2,
+      t: 'room.create',
+      profile: { cid: '', name: 'Host', avatarUrl: null },
+      allowGuestControl: false,
+      queue: [
+        {
+          uid: 'h1',
+          trackId: '101',
+          title: 'Night Drive',
+          artist: 'Subzero',
+          addedBy: { cid: '', name: 'Host', avatarUrl: null },
+        },
+      ],
+      currentIndex: 0,
+      playback: { trackId: '101', queueUid: 'h1', posMs: 0, playing: false },
+    })
+    const created = await host.next((m) => m.t === 'room.joined')
+    if (created.t !== 'room.joined') throw new Error('expected room.joined')
+
+    const res1 = await fetch(`http://127.0.0.1:${srv.port}/join/${created.state.code}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    })
+    expect(res1.status).toBe(200)
+    const csp1 = res1.headers.get('content-security-policy') ?? ''
+    const scriptSrc1 = csp1
+      .split(';')
+      .map((s) => s.trim())
+      .find((s) => s.startsWith('script-src')) ?? ''
+    expect(scriptSrc1).not.toContain("'unsafe-inline'")
+    const nonceMatch1 = /script-src 'nonce-([^']+)'/.exec(csp1)
+    expect(nonceMatch1).not.toBeNull()
+    const nonce1 = nonceMatch1![1]!
+    const html1 = await res1.text()
+    expect(html1).toContain(`<script nonce="${nonce1}">`)
+    expect(html1).toContain('\\u003c/script\\u003e')
+    expect(html1).not.toContain('</script><script>alert(1)</script>')
+
+    const res2 = await fetch(`http://127.0.0.1:${srv.port}/join/${created.state.code}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    })
+    const csp2 = res2.headers.get('content-security-policy') ?? ''
+    const nonceMatch2 = /script-src 'nonce-([^']+)'/.exec(csp2)
+    expect(nonceMatch2).not.toBeNull()
+    expect(nonceMatch2![1]).not.toBe(nonce1)
+
+    const client = new SessionClient(
+      () => {
+        throw new Error('should not connect WebSocket for untrusted server')
+      },
+      async () => {
+        throw new Error('should not fetch untrusted server')
+      },
+    )
+    const joined = await client.joinRoom({
+      input: 'https://evil.example/join/K7M4P9Q2',
+      serverUrl: 'https://lunajam.sn0w13.de',
+      profile: { cid: '', name: 'Guest', avatarUrl: null },
+      audioMode: 'remote',
+    })
+    expect(joined).toBe(false)
+    expect(client.snapshot().error).toContain('untrusted')
+  })
+
+  it('ignores X-Real-IP, honors trustProxy=false, groups IPv6 /64 for bans and limits, and caps httpRate entries', async () => {
+    expect(normalizeIpKey('2001:db8:abcd:0001::5')).toBe(normalizeIpKey('2001:db8:abcd:1::9999'))
+    expect(normalizeIpKey('::1')).toBe('::1')
+    expect(normalizeIpKey('203.0.113.5')).toBe('203.0.113.5')
+
+    const srv = await startServer({
+      port: 0,
+      host: '127.0.0.1',
+      publicUrl: 'https://lunajam.sn0w13.de',
+      maxParticipants: 32,
+      hostGraceMs: 300,
+      roomTtlMs: 60000,
+      rateLimitPerSec: 120,
+      maxConnections: 64,
+      idleTimeoutMs: 60000,
+      maxRooms: 32,
+      roomsPerConn: 10,
+      maxConnsPerIp: 2,
+      trustProxy: true,
+    })
+    closers.push(() => srv.close())
+
+    const host = await connectClient(srv.port, { 'X-Forwarded-For': '198.51.100.1' })
+    closers.push(() => host.close())
+    await host.next((m) => m.t === 'welcome')
+    host.send({
+      v: 2,
+      t: 'room.create',
+      profile: { cid: '', name: 'Host', avatarUrl: null },
+      allowGuestControl: false,
+      queue: [
+        {
+          uid: 'h1',
+          trackId: '101',
+          title: 'Night Drive',
+          artist: 'Subzero',
+          addedBy: { cid: '', name: 'Host', avatarUrl: null },
+        },
+      ],
+      currentIndex: 0,
+      playback: { trackId: '101', queueUid: 'h1', posMs: 0, playing: false },
+    })
+    const created = await host.next((m) => m.t === 'room.joined')
+    if (created.t !== 'room.joined') throw new Error('expected room.joined')
+    const code = created.state.code
+
+    const v6Bad = await connectClient(srv.port, {
+      'X-Forwarded-For': '2001:db8:1111:2222::1',
+      'X-Real-IP': '198.51.100.10',
+    })
+    closers.push(() => v6Bad.close())
+    await v6Bad.next((m) => m.t === 'welcome')
+    v6Bad.send({
+      v: 2,
+      t: 'room.join',
+      code,
+      profile: { cid: '', name: 'BadV6', avatarUrl: null },
+      audioMode: 'remote',
+    })
+    const badJoined = await v6Bad.next((m) => m.t === 'room.joined')
+    if (badJoined.t !== 'room.joined') throw new Error('expected badV6 joined')
+    const badCid = badJoined.state.participants.find((p) => p.name === 'BadV6')!.cid
+
+    host.send({ v: 2, t: 'room.kick', targetCid: badCid })
+    const kicked = await v6Bad.next((m) => m.t === 'room.ended')
+    expect(kicked.t === 'room.ended' && kicked.reason).toBe('banned')
+
+    const v6Same64SpoofRealIp = await connectClient(srv.port, {
+      'X-Forwarded-For': '2001:db8:1111:2222::beef',
+      'X-Real-IP': '198.51.100.99',
+    })
+    closers.push(() => v6Same64SpoofRealIp.close())
+    await v6Same64SpoofRealIp.next((m) => m.t === 'welcome')
+    v6Same64SpoofRealIp.send({
+      v: 2,
+      t: 'room.join',
+      code,
+      profile: { cid: '', name: 'StillBanned', avatarUrl: null },
+      audioMode: 'remote',
+    })
+    const banErr = await v6Same64SpoofRealIp.next((m) => m.t === 'error')
+    expect(banErr.t === 'error' && banErr.code).toBe('room_banned')
+
+    const v6Limit1 = await connectClient(srv.port, { 'X-Forwarded-For': '2001:db8:aaaa:bbbb::1' })
+    const v6Limit2 = await connectClient(srv.port, { 'X-Forwarded-For': '2001:db8:aaaa:bbbb::2' })
+    closers.push(() => v6Limit1.close(), () => v6Limit2.close())
+    await expect(
+      connectClient(srv.port, { 'X-Forwarded-For': '2001:db8:aaaa:bbbb::3' }),
+    ).rejects.toThrow()
+
+    const noProxySrv = await startServer({
+      port: 0,
+      host: '127.0.0.1',
+      publicUrl: 'https://lunajam.sn0w13.de',
+      maxParticipants: 32,
+      hostGraceMs: 300,
+      roomTtlMs: 60000,
+      rateLimitPerSec: 120,
+      maxConnections: 64,
+      idleTimeoutMs: 60000,
+      maxRooms: 32,
+      roomsPerConn: 10,
+      maxConnsPerIp: 2,
+      trustProxy: false,
+    })
+    closers.push(() => noProxySrv.close())
+
+    const np1 = await connectClient(noProxySrv.port, { 'X-Forwarded-For': '198.51.100.1' })
+    const np2 = await connectClient(noProxySrv.port, { 'X-Forwarded-For': '198.51.100.2' })
+    closers.push(() => np1.close(), () => np2.close())
+    await expect(
+      connectClient(noProxySrv.port, { 'X-Forwarded-For': '198.51.100.3' }),
+    ).rejects.toThrow()
+
+    const hub = new Hub({
+      port: 0,
+      host: '127.0.0.1',
+      publicUrl: 'https://lunajam.sn0w13.de',
+      maxParticipants: 32,
+      hostGraceMs: 300,
+      roomTtlMs: 60000,
+      rateLimitPerSec: 120,
+      maxConnections: 64,
+      idleTimeoutMs: 60000,
+      maxRooms: 32,
+      roomsPerConn: 10,
+      maxConnsPerIp: 32,
+      trustProxy: true,
+    })
+    const hubPort = await hub.listen()
+    closers.push(() => hub.close())
+
+    for (let start = 0; start < 4500; start += 100) {
+      await Promise.all(
+        Array.from({ length: 100 }, (_, offset) => {
+          const i = start + offset
+          const ip = `198.18.${Math.floor(i / 256)}.${i % 256}`
+          return fetch(`http://127.0.0.1:${hubPort}/api/resolve/NOPE`, {
+            headers: { 'X-Forwarded-For': ip },
+          })
+        }),
+      )
+    }
+    expect(hub.getHttpRateSize()).toBeGreaterThan(0)
+    expect(hub.getHttpRateSize()).toBeLessThanOrEqual(4096)
   })
 })

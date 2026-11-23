@@ -184,6 +184,7 @@ export function parseJoinTarget(input: string): { token: string; serverUrl?: str
   if (isStandbyToken(trimmed)) return { token: trimmed }
   if (isRoomCode(trimmed)) return { token: normalizeCode(trimmed) }
   try {
+    const isCustomScheme = /^tidaluna:/i.test(trimmed)
     const normalizedScheme = trimmed.replace(/^tidaluna:/i, 'https:')
     const url = new URL(normalizedScheme)
     if (url.protocol === 'https:' || url.protocol === 'http:') {
@@ -191,16 +192,27 @@ export function parseJoinTarget(input: string): { token: string; serverUrl?: str
       const serverParam = url.searchParams.get('server')
       const pathSeg = url.pathname.split('/').filter(Boolean).pop() ?? ''
       const rawToken = codeParam || pathSeg
+      let resolvedServerUrl: string | undefined
+      if (isCustomScheme) {
+        resolvedServerUrl = serverParam ? sanitizeBaseUrl(serverParam) ?? undefined : undefined
+      } else {
+        const originUrl = sanitizeBaseUrl(url.origin) ?? undefined
+        if (serverParam !== null) {
+          resolvedServerUrl = sanitizeBaseUrl(serverParam) === originUrl ? originUrl : undefined
+        } else {
+          resolvedServerUrl = originUrl
+        }
+      }
       if (isStandbyToken(rawToken)) {
         return {
           token: rawToken.trim(),
-          serverUrl: serverParam ? sanitizeBaseUrl(serverParam) ?? undefined : trimmed.startsWith('http') ? url.origin : undefined,
+          serverUrl: resolvedServerUrl,
         }
       }
       if (isRoomCode(rawToken)) {
         return {
           token: normalizeCode(rawToken),
-          serverUrl: serverParam ? sanitizeBaseUrl(serverParam) ?? undefined : trimmed.startsWith('http') ? url.origin : undefined,
+          serverUrl: resolvedServerUrl,
         }
       }
     }
@@ -231,7 +243,25 @@ function isObj(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x)
 }
 
-const COVER_DOMAINS = ['tidal.com'] as const
+export const COVER_DOMAINS = [
+  'tidal.com',
+  'scdn.co',
+  'spotifycdn.com',
+  'sndcdn.com',
+  'ytimg.com',
+  'ggpht.com',
+  'googleusercontent.com',
+  'mzstatic.com',
+  'dzcdn.net',
+  'bcbits.com',
+  'coverartarchive.org',
+  'archive.org',
+  'discordapp.com',
+  'discordapp.net',
+  'githubusercontent.com',
+  'imgur.com',
+  'catbox.moe',
+] as const
 const AVATAR_DOMAINS = [
   'tidal.com',
   'gravatar.com',

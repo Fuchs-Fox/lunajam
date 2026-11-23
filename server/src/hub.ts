@@ -1,8 +1,8 @@
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { isIP } from 'node:net'
 import { WebSocket, WebSocketServer, type RawData } from 'ws'
-import { decodeClient, encode, type ClientMsg, type ResolveSummary, type ServerMsg } from '../../plugins/lunajam/src/protocol'
+import { COVER_DOMAINS, decodeClient, encode, type ClientMsg, type ResolveSummary, type ServerMsg } from '../../plugins/lunajam/src/protocol'
 import type { Config } from './config'
 import { renderJoinPage } from './joinPage'
 
@@ -11,10 +11,15 @@ const MAX_WIRE_BYTES = MAX_MESSAGE_BYTES + 16384
 const MAX_BUFFERED_BYTES = 2097152
 const HTTP_RATE_WINDOW_MS = 10000
 const HTTP_RATE_LIMIT = 60
+const MAX_HTTP_RATE_ENTRIES = 4096
 const BOT_UA_RE = /Discordbot|TelegramBot|Slackbot|Twitterbot|WhatsApp|facebookexternalhit|LinkedInBot|Embedly|crawler|spider|preview/i
 const RFC1918_172_RE = /^172\.(1[6-9]|2\d|3[01])\./
-const JOIN_CSP =
-  "default-src 'none'; img-src https://resources.tidal.com https://*.tidal.com; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src http://127.0.0.1:*; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+const COVER_IMG_SRC = ['https://resources.tidal.com', ...COVER_DOMAINS.map((d) => `https://${d} https://*.${d}`)].join(' ')
+
+function buildJoinCsp(nonce?: string): string {
+  const scriptSrc = nonce ? `'nonce-${nonce}'` : "'none'"
+  return `default-src 'none'; img-src ${COVER_IMG_SRC}; style-src 'unsafe-inline'; script-src ${scriptSrc}; connect-src http://127.0.0.1:*; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
+}
 
 const BASE_SECURITY_HEADERS: Record<string, string> = {
   'x-content-type-options': 'nosniff',
@@ -59,14 +64,59 @@ function parseCandidateIp(raw: string): string | null {
   return isIP(s) !== 0 ? s : null
 }
 
-function extractClientIp(req: IncomingMessage): string {
-  const cleanRemote = (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '')
-  if (isTrustedProxyRemote(cleanRemote)) {
-    const xReal = req.headers['x-real-ip']
-    const realStr = Array.isArray(xReal) ? xReal[0] : xReal
-    const parsedReal = realStr ? parseCandidateIp(realStr) : null
-    if (parsedReal) return parsedReal
+function expandIpv6Words(ip: string): number[] | null {
+  const parts = ip.split('::')
+  if (parts.length > 2) return null
 
+  const parseSide = (raw: string): number[] | null => {
+    if (!raw) return []
+    const tokens = raw.split(':')
+    const out: number[] = []
+    for (let i = 0; i < tokens.length; i++) {
+      const tok = tokens[i]!
+      if (tok.includes('.')) {
+        if (i !== tokens.length - 1 || isIP(tok) !== 4) return null
+        const octets = tok.split('.').map((o) => Number.parseInt(o, 10))
+        if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255)) return null
+        out.push((octets[0]! << 8) | octets[1]!, (octets[2]! << 8) | octets[3]!)
+      } else {
+        if (!/^[0-9a-fA-F]{1,4}$/.test(tok)) return null
+        out.push(Number.parseInt(tok, 16))
+      }
+    }
+    return out
+  }
+
+  const left = parseSide(parts[0] ?? '')
+  if (!left) return null
+  if (parts.length === 1) {
+    return left.length === 8 ? left : null
+  }
+  const right = parseSide(parts[1] ?? '')
+  if (!right) return null
+  const missing = 8 - (left.length + right.length)
+  if (missing < 1) return null
+  return [...left, ...Array<number>(missing).fill(0), ...right]
+}
+
+export function normalizeIpKey(rawIp: string): string {
+  const s = rawIp.trim().replace(/^::ffff:/, '')
+  const ver = isIP(s)
+  if (ver === 4) return s
+  if (ver === 6) {
+    const words = expandIpv6Words(s)
+    if (!words) return s.toLowerCase()
+    if (words[0] === 0 && words[1] === 0 && words[2] === 0 && words[3] === 0 && words[4] === 0 && words[5] === 0 && words[6] === 0 && words[7] === 1) {
+      return '::1'
+    }
+    return `${words.slice(0, 4).map((w) => w.toString(16).padStart(4, '0')).join(':')}::/64`
+  }
+  return s
+}
+
+function extractClientIp(req: IncomingMessage, trustProxy = true): string {
+  const cleanRemote = (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '')
+  if (trustProxy && isTrustedProxyRemote(cleanRemote)) {
     const fwd = req.headers['x-forwarded-for']
     const fwdRaw = Array.isArray(fwd) ? fwd[fwd.length - 1] : fwd
     if (fwdRaw) {
@@ -75,11 +125,11 @@ function extractClientIp(req: IncomingMessage): string {
         const seg = parts[i]!.trim()
         if (!seg) continue
         const candidate = parseCandidateIp(seg)
-        return candidate ?? cleanRemote
+        return normalizeIpKey(candidate ?? cleanRemote)
       }
     }
   }
-  return cleanRemote
+  return normalizeIpKey(cleanRemote)
 }
 
 function safeDecodeSegment(raw: string): string | null {
@@ -131,7 +181,7 @@ export class Hub {
     this.server.keepAliveTimeout = 5000
 
     this.server.on('upgrade', (req, socket, head) => {
-      const ip = extractClientIp(req)
+      const ip = extractClientIp(req, this.cfg.trustProxy ?? true)
       if (this.conns.size >= this.cfg.maxConnections) {
         socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n')
         socket.destroy()
@@ -171,6 +221,10 @@ export class Hub {
 
   peerIp(cid: string): string | undefined {
     return this.conns.get(cid)?.ip
+  }
+
+  getHttpRateSize(): number {
+    return this.httpRate.size
   }
 
   send(cid: string, msg: ServerMsg): void {
@@ -222,7 +276,23 @@ export class Hub {
   private allowHttp(ip: string): boolean {
     const now = Date.now()
     let entry = this.httpRate.get(ip)
-    if (!entry || now - entry.windowStart >= HTTP_RATE_WINDOW_MS) {
+    if (entry && now - entry.windowStart >= HTTP_RATE_WINDOW_MS) {
+      this.httpRate.delete(ip)
+      entry = undefined
+    }
+    if (!entry) {
+      if (this.httpRate.size >= MAX_HTTP_RATE_ENTRIES) {
+        for (const [k, existing] of this.httpRate) {
+          if (now - existing.windowStart >= HTTP_RATE_WINDOW_MS) {
+            this.httpRate.delete(k)
+          }
+        }
+        while (this.httpRate.size >= MAX_HTTP_RATE_ENTRIES) {
+          const oldest = this.httpRate.keys().next().value
+          if (oldest === undefined) break
+          this.httpRate.delete(oldest)
+        }
+      }
       entry = { windowStart: now, count: 0 }
       this.httpRate.set(ip, entry)
     }
@@ -269,7 +339,7 @@ export class Hub {
     }
 
     if (urlPath.startsWith('/api/resolve/')) {
-      const ip = extractClientIp(req)
+      const ip = extractClientIp(req, this.cfg.trustProxy ?? true)
       const jsonHeaders = {
         ...BASE_SECURITY_HEADERS,
         'content-type': 'application/json; charset=utf-8',
@@ -295,26 +365,36 @@ export class Hub {
     }
 
     if (urlPath.startsWith('/join/')) {
-      const ip = extractClientIp(req)
-      const htmlHeaders = {
-        ...BASE_SECURITY_HEADERS,
-        'content-security-policy': JOIN_CSP,
-        'content-type': 'text/html; charset=utf-8',
-        'cache-control': 'no-store',
-      }
+      const ip = extractClientIp(req, this.cfg.trustProxy ?? true)
       if (!this.allowHttp(ip)) {
         res.writeHead(429, { ...BASE_SECURITY_HEADERS, 'content-type': 'text/plain', 'retry-after': '10' }).end('too many requests')
         return
       }
       const token = safeDecodeSegment(urlPath.slice('/join/'.length))
       if (!token) {
-        res.writeHead(400, htmlHeaders).end(renderJoinPage(null, this.cfg.publicUrl))
+        res
+          .writeHead(400, {
+            ...BASE_SECURITY_HEADERS,
+            'content-security-policy': buildJoinCsp(),
+            'content-type': 'text/html; charset=utf-8',
+            'cache-control': 'no-store',
+          })
+          .end(renderJoinPage(null, this.cfg.publicUrl))
         return
       }
       const ua = String(req.headers['user-agent'] ?? '')
       const isPreview = method === 'HEAD' || BOT_UA_RE.test(ua)
       const summary = isPreview ? this.handler?.peekToken(token) ?? null : this.handler?.resolveToken(token) ?? null
-      res.writeHead(summary ? 200 : 404, htmlHeaders).end(method === 'HEAD' ? undefined : renderJoinPage(summary, this.cfg.publicUrl))
+      const nonce = summary ? randomBytes(16).toString('base64') : undefined
+      const htmlHeaders = {
+        ...BASE_SECURITY_HEADERS,
+        'content-security-policy': buildJoinCsp(nonce),
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+      }
+      res
+        .writeHead(summary ? 200 : 404, htmlHeaders)
+        .end(method === 'HEAD' ? undefined : renderJoinPage(summary, this.cfg.publicUrl, nonce))
       return
     }
 
