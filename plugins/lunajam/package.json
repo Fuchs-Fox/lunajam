@@ -1,8 +1,8 @@
 {
   "name": "lunajam",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "license": "MIT",
-  "description": "Native Jam sessions and Discord Listen Together for TIDAL Desktop (TidaLuna).",
+  "description": "Listen together on TIDAL Desktop",
   "author": {
     "name": "Fuchs-Fox",
     "url": "https://github.com/Fuchs-Fox"
